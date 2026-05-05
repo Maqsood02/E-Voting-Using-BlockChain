@@ -910,6 +910,48 @@ body {
 .stat-label { color: var(--text-secondary); font-size: 0.85rem; font-weight: 600; }
 .stat-value { font-size: 2rem; font-weight: 800; color: var(--text-primary); }
 
+/* ── Winner Announcement Card ── */
+.winner-announcement-card {
+  position: relative;
+  padding: 4rem 2rem !important;
+  background: linear-gradient(to bottom, rgba(255,255,255,0.9), rgba(255,255,255,0.7)) !important;
+  border: 2px solid rgba(255,215,0,0.3) !important;
+  overflow: hidden;
+}
+
+.winner-badge-float {
+  position: absolute;
+  top: 2rem;
+  right: -2.5rem;
+  background: var(--accent);
+  color: #fff;
+  padding: .5rem 3rem;
+  transform: rotate(45deg);
+  font-weight: 800;
+  font-size: .8rem;
+  letter-spacing: 2px;
+  box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+}
+
+.winner-announcement-card .animate-bounce {
+  animation: winner-bounce 2s infinite;
+}
+
+@keyframes winner-bounce {
+  0%, 100% { transform: translateY(0) scale(1); }
+  50% { transform: translateY(-15px) scale(1.05); }
+}
+
+.winner-name-large {
+  background: linear-gradient(135deg, var(--text-primary) 0%, var(--accent) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  margin-top: 1rem;
+}
+
+.py-5 { padding-top: 3rem; padding-bottom: 3rem; }
+.mx-auto { margin-left: auto; margin-right: auto; }
+
 .chart-card { display: flex; flex-direction: column; min-height: 400px; }
 .chart-container { position: relative; height: 350px; width: 100%; margin-top: 1rem; }
 
