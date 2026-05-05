@@ -144,12 +144,15 @@
             <span class="badge">Next-Gen E-Voting</span>
             <h1>Secure Your Vote with <span class="text-gradient">Blockchain Trust</span></h1>
             <p class="hero-lead">Votify leverages decentralized Ethereum smart contracts to deliver a transparent, immutable, and fraud-proof voting experience for the digital age.</p>
-            <div class="hero-actions">
+            <div class="hero-btns mt-5">
               <button class="btn btn-primary btn-lg" onclick="switchTab('vote')">
                 <i class="fa-solid fa-check-to-slot"></i> Get Started
               </button>
               <button class="btn btn-outline btn-lg" onclick="switchTab('results')">
                 <i class="fa-solid fa-chart-line"></i> Live Analytics
+              </button>
+              <button class="btn btn-outline btn-lg" onclick="switchTab('developer')">
+                <i class="fa-solid fa-code"></i> Meet Developer Team
               </button>
             </div>
           </div>
@@ -287,7 +290,47 @@
         </div>
       </section>
 
-      <!-- ══ TAB 5: ADMIN ══ -->
+      <!-- ══ TAB 5: DEVELOPER ══ -->
+      <section id="tab-developer" class="tab-content">
+        <div class="tab-header text-center">
+          <span class="badge">Innovation & Design</span>
+          <h2>Meet the Developer</h2>
+          <p class="section-desc">The creative mind behind the Votify E-Voting system.</p>
+        </div>
+        
+        <div class="developer-profile-container">
+          <div class="developer-card glass-card">
+            <div class="developer-visual">
+                <div class="dev-img-wrapper">
+                    <img src="assets/developer.jpg" alt="Maqsood M D" class="dev-photo">
+                </div>
+                <div class="dev-decoration"></div>
+            </div>
+            <div class="developer-details">
+                <div class="dev-tag">Lead Developer</div>
+                <h1 class="dev-name">Maqsood M D</h1>
+                <div class="dev-usn">
+                    <span class="usn-label">USN :</span>
+                    <span class="usn-value">U23E01CS036</span>
+                </div>
+                <p class="dev-bio">
+                    A passionate full-stack developer specializing in blockchain technology and modern web architectures. 
+                    Maqsood focuses on creating secure, transparent, and user-centric digital solutions for the next generation.
+                </p>
+                <div class="dev-socials">
+                    <a href="#" class="social-btn"><i class="fa-brands fa-github"></i></a>
+                    <a href="#" class="social-btn"><i class="fa-brands fa-linkedin"></i></a>
+                    <a href="#" class="social-btn"><i class="fa-solid fa-envelope"></i></a>
+                </div>
+                <button class="btn btn-primary mt-4" onclick="switchTab('landing')">
+                    <i class="fa-solid fa-arrow-left"></i> Back to Home
+                </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ══ TAB 6: ADMIN ══ -->
       <section id="tab-admin" class="tab-content">
         <div class="tab-header">
           <span class="badge">Authority Center</span>
