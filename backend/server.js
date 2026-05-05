@@ -6,12 +6,33 @@ require('dotenv').config();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/votify';
+const MONGODB_URI = (process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/votify').trim();
 
-// MongoDB Connection
+// MongoDB Connection & Seeding
 mongoose.connect(MONGODB_URI)
-  .then(() => console.log('Connected to MongoDB successfully'))
+  .then(async () => {
+    console.log('Connected to MongoDB successfully');
+    await seedAdmin();
+  })
   .catch(err => console.error('MongoDB connection error:', err));
+
+async function seedAdmin() {
+  try {
+    const adminExists = await User.findOne({ role: 'admin' });
+    if (!adminExists) {
+      const admin = new User({
+        name: 'Administrator',
+        email: 'admin@votify.com',
+        password: 'admin123',
+        role: 'admin'
+      });
+      await admin.save();
+      console.log('✅ Default admin account created: admin@votify.com / admin123');
+    }
+  } catch (err) {
+    console.warn('Admin seeding skipped or failed.');
+  }
+}
 
 // --- Schemas & Models ---
 const userSchema = new mongoose.Schema({
