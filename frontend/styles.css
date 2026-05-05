@@ -1346,14 +1346,16 @@ body {
 
     .leaderboard-table-wrapper, 
     .table-container,
-    #users-table {
+    #users-table,
+    #leaderboard {
         overflow-x: auto !important;
         display: block;
         width: 100%;
         -webkit-overflow-scrolling: touch;
+        border-radius: var(--radius-md);
     }
 
-    table, .leaderboard-table {
+    table, .leaderboard-table, .lb-table {
         min-width: 600px;
     }
 
