@@ -952,6 +952,146 @@ body {
 .py-5 { padding-top: 3rem; padding-bottom: 3rem; }
 .mx-auto { margin-left: auto; margin-right: auto; }
 
+/* ── Developer Profile ── */
+.developer-profile-container {
+  display: flex;
+  justify-content: center;
+  padding: 2rem 0;
+}
+
+.developer-card {
+  display: grid;
+  grid-template-columns: 1fr 1.5fr;
+  gap: 3rem;
+  max-width: 900px;
+  width: 100%;
+  padding: 3rem !important;
+  align-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.4) !important;
+}
+
+.developer-visual {
+  position: relative;
+}
+
+.dev-img-wrapper {
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 24px;
+  overflow: hidden;
+  box-shadow: 0 20px 40px rgba(0,0,0,0.15);
+  border: 4px solid #fff;
+  z-index: 2;
+  position: relative;
+}
+
+.dev-photo {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform .5s ease;
+}
+
+.dev-img-wrapper:hover .dev-photo {
+  transform: scale(1.08);
+}
+
+.dev-decoration {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  top: 15px;
+  left: 15px;
+  background: var(--accent);
+  border-radius: 24px;
+  opacity: 0.2;
+  z-index: 1;
+}
+
+.dev-tag {
+  display: inline-block;
+  padding: .35rem 1rem;
+  background: rgba(94, 92, 230, 0.1);
+  color: var(--accent);
+  border-radius: 30px;
+  font-weight: 700;
+  font-size: .8rem;
+  margin-bottom: 1rem;
+}
+
+.dev-name {
+  font-size: 3rem;
+  font-weight: 800;
+  color: var(--text-primary);
+  margin-bottom: .5rem;
+  line-height: 1.1;
+}
+
+.dev-usn {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  margin-bottom: 1.5rem;
+}
+
+.usn-label {
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.usn-value {
+  font-family: 'Monaco', 'Consolas', monospace;
+  background: #f3f4f6;
+  padding: .2rem .6rem;
+  border-radius: 6px;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.dev-bio {
+  color: var(--text-secondary);
+  line-height: 1.7;
+  margin-bottom: 2rem;
+  font-size: 1.05rem;
+}
+
+.dev-socials {
+  display: flex;
+  gap: 1rem;
+}
+
+.social-btn {
+  width: 45px;
+  height: 45px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #fff;
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  color: var(--text-primary);
+  font-size: 1.2rem;
+  transition: all .3s ease;
+}
+
+.social-btn:hover {
+  background: var(--accent);
+  color: #fff;
+  transform: translateY(-5px);
+  box-shadow: 0 10px 20px rgba(94, 92, 230, 0.2);
+}
+
+@media (max-width: 768px) {
+  .developer-card {
+    grid-template-columns: 1fr;
+    gap: 2rem;
+    padding: 2rem !important;
+  }
+  
+  .dev-name { font-size: 2.2rem; }
+  .developer-visual { max-width: 300px; margin: 0 auto; }
+}
+
 .chart-card { display: flex; flex-direction: column; min-height: 400px; }
 .chart-container { position: relative; height: 350px; width: 100%; margin-top: 1rem; }
 
