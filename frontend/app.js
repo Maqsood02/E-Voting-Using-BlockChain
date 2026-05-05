@@ -231,7 +231,6 @@ function startSession(session) {
   const initials = session.name.split(' ').map(w => w[0]).join('').toUpperCase().substring(0,2);
   document.getElementById('user-pill-avatar').innerText = initials;
   document.getElementById('user-pill-name').innerText   = session.name;
-  document.getElementById('user-pill').style.display     = 'flex';
 
   // Show/hide Admin nav link
   const adminLink = document.getElementById('nav-admin');
@@ -356,13 +355,29 @@ function toggleEye(inputId, btn) {
 window.addEventListener('DOMContentLoaded', () => {
   initAuth();
 
+  // Support ?logout=true in URL to force show auth screen
+  const urlParams = new URLSearchParams(window.location.search);
+  if (urlParams.get('logout') === 'true') {
+    localStorage.removeItem(KEY_SESSION);
+    // Clean URL without reload
+    window.history.replaceState({}, '', window.location.pathname);
+  }
+
   // Restore session if user was previously logged in
   const saved = localStorage.getItem(KEY_SESSION);
   if (saved) {
     try {
-      startSession(JSON.parse(saved));
+      const session = JSON.parse(saved);
+      // Validate session has required fields
+      if (session && session.email && session.role) {
+        startSession(session);
+      } else {
+        throw new Error('Invalid session');
+      }
     } catch {
       localStorage.removeItem(KEY_SESSION);
+      document.getElementById('auth-overlay').style.display = 'flex';
+      document.getElementById('app-shell').style.display    = 'none';
     }
   } else {
     // Show auth overlay
