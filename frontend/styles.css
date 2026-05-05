@@ -789,6 +789,19 @@ body {
   color: var(--gold); font-size: .88rem; font-weight: 600;
   margin-bottom: 1rem;
 }
+.confirm-modal-warning {
+  margin: 1.2rem 0;
+  padding: 0.8rem;
+  background: rgba(255, 159, 67, 0.1);
+  border-radius: 8px;
+  color: #e67e22; /* Darker orange for better contrast on white */
+  font-size: 0.82rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  border: 1px solid rgba(230, 126, 34, 0.2);
+}
 
 /* View-only button on cards */
 .btn-admin-view {
