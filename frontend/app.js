@@ -742,9 +742,9 @@ async function executeVote(candidateId, cand) {
       });
 
       showToast("✅ Vote recorded on the Ethereum blockchain!", "success");
-      fetchCandidates();
-      fetchResults();
-      checkVoterStatus();
+      await fetchCandidates();
+      await fetchResults();
+      await checkVoterStatus();
       return;
     } catch (err) {
       showToast(`Contract error: ${err.reason || err.message}`, "error");
@@ -762,10 +762,10 @@ async function executeVote(candidateId, cand) {
     const data = await res.json();
 
     if (data.success) {
-      showToast(`✅ Vote for "${cand ? cand.name : 'Candidate'}" recorded successfully in MongoDB!`, "success");
-      fetchCandidates();
-      fetchResults();
-      checkVoterStatus();
+      showToast(`✅ Vote for "${cand ? cand.name : 'Candidate'}" recorded successfully!`, "success");
+      await fetchCandidates();
+      await fetchResults();
+      await checkVoterStatus();
     } else {
       showToast(`❌ ${data.error}`, 'error');
     }
