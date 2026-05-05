@@ -955,7 +955,8 @@ body {
 /* ── Developer Profile ── */
 .developer-profile-container {
   display: flex;
-  justify-content: center;
+  flex-direction: column;
+  align-items: center;
   padding: 2rem 0;
 }
 
