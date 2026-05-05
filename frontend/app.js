@@ -440,7 +440,8 @@ async function switchTab(tabId) {
 
   const link = document.getElementById(`nav-${tabId}`);
   const tab  = document.getElementById(`tab-${tabId}`);
-  if (link && tab) { link.classList.add('active'); tab.classList.add('active'); }
+  if (tab) tab.classList.add('active');
+  if (link) link.classList.add('active');
 
   if (tabId === 'results' || tabId === 'winner') await fetchResults();
   if (tabId === 'vote')    { await fetchCandidates(); await checkVoterStatus(); }
