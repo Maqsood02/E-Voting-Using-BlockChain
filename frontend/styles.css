@@ -1218,20 +1218,48 @@ body {
   #user-pill-name{ display: none; }
 }
 
+.mobile-nav-active .glass-navbar {
+  background: var(--surface-solid);
+  backdrop-filter: none;
+  box-shadow: none;
+}
+
 /* Mobile Menu Overlay */
 .mobile-nav-active .nav-links {
   display: flex !important;
   position: fixed;
-  top: 72px; left: 0; right: 0; bottom: 0;
-  background: rgba(255,255,255,.98);
-  backdrop-filter: blur(10px);
+  top: 70px; /* Precise offset from navbar */
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--surface-solid); /* Solid background for visibility */
   flex-direction: column;
-  padding: 2rem;
-  z-index: 1000;
-  gap: 1.5rem;
-  animation: slide-down .3s ease;
+  padding: 1.5rem;
+  z-index: 9999; /* Higher z-index to stay above everything */
+  gap: 0.5rem;
+  box-shadow: var(--shadow-lg);
+  animation: slide-down 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+  overflow-y: auto; /* Allow scrolling if many links */
 }
-.mobile-nav-active .nav-link { font-size: 1.2rem; padding: 1rem; width: 100%; border-bottom: 1px solid var(--border-color); }
+
+.mobile-nav-active .nav-link {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--text-primary) !important; /* Darker text for visibility */
+  padding: 1.2rem;
+  width: 100%;
+  border-radius: var(--radius-md);
+  border-bottom: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  transition: var(--transition);
+}
+
+.mobile-nav-active .nav-link:hover, 
+.mobile-nav-active .nav-link.active {
+  background: var(--accent-glow);
+  color: var(--accent) !important;
+}
 
 @keyframes slide-down {
   from { opacity: 0; transform: translateY(-20px); }
@@ -1313,7 +1341,7 @@ body {
 /* ─── Final Mobile Polish ─── */
 @media (max-width: 768px) {
     .nav-links {
-        display: none !important;
+        display: none;
     }
 
     .leaderboard-table-wrapper, 
