@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Votify - Decentralized Blockchain E-Voting</title>
+  <meta name="description" content="Votify: a transparent, immutable, blockchain-powered e-voting system using Ethereum smart contracts.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link rel="stylesheet" href="styles.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.12.1/ethers.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body class="bg-gradient">
+  
+  <!-- Dynamic Background Blobs -->
+  <div class="bg-blobs">
+    <div class="blob blob-1"></div>
+    <div class="blob blob-2"></div>
+    <div class="blob blob-3"></div>
+  </div>
+
+
+  <!-- ══════════════════════════════════════════════════════════
+       AUTH OVERLAY — shown when not logged in
+  ══════════════════════════════════════════════════════════════ -->
+  <div id="auth-overlay" class="auth-overlay">
+    <div class="auth-panel glass-card">
+
+      <!-- Branding -->
+      <div class="auth-brand">
+        <i class="fa-solid fa-cube text-accent animate-pulse"></i>
+        <span class="auth-logo">Votify<span class="text-accent">.</span></span>
+      </div>
+
+      <!-- ── LOGIN FORM ───────────────────────────────────── -->
+      <div id="auth-login" class="auth-form active">
+        <h2 class="auth-title">Welcome Back</h2>
+        <p class="auth-sub">Sign in to participate in the election</p>
+
+        <div class="form-group">
+          <label for="login-email"><i class="fa-solid fa-envelope"></i> Email Address</label>
+          <input type="email" id="login-email" placeholder="you@example.com" autocomplete="email">
+        </div>
+        <div class="form-group">
+          <label for="login-password"><i class="fa-solid fa-lock"></i> Password</label>
+          <div class="input-eye-wrap">
+            <input type="password" id="login-password" placeholder="Your password" autocomplete="current-password">
+            <button type="button" class="eye-btn" onclick="toggleEye('login-password',this)"><i class="fa-solid fa-eye"></i></button>
+          </div>
+        </div>
+        <div id="login-error" class="auth-error" style="display:none"></div>
+        <button class="btn btn-primary btn-full" onclick="handleLogin()">
+          <i class="fa-solid fa-right-to-bracket"></i> Sign In
+        </button>
+        <p class="auth-switch">
+          Don't have an account?
+          <a href="#" onclick="showAuthForm('register')">Register here</a>
+        </p>
+      </div>
+
+      <!-- ── REGISTER FORM ────────────────────────────────── -->
+      <div id="auth-register" class="auth-form">
+        <h2 class="auth-title">Create Account</h2>
+        <p class="auth-sub">Register to cast your secure blockchain vote</p>
+
+        <div class="form-group">
+          <label for="reg-name"><i class="fa-solid fa-user"></i> Full Name</label>
+          <input type="text" id="reg-name" placeholder="e.g. Maqsood Ahmed">
+        </div>
+        <div class="form-group">
+          <label for="reg-email"><i class="fa-solid fa-envelope"></i> Email Address</label>
+          <input type="email" id="reg-email" placeholder="you@example.com">
+        </div>
+        <div class="form-group">
+          <label for="reg-password"><i class="fa-solid fa-lock"></i> Password</label>
+          <div class="input-eye-wrap">
+            <input type="password" id="reg-password" placeholder="Min 6 characters">
+            <button type="button" class="eye-btn" onclick="toggleEye('reg-password',this)"><i class="fa-solid fa-eye"></i></button>
+          </div>
+        </div>
+        <div id="reg-error" class="auth-error" style="display:none"></div>
+        <button class="btn btn-primary btn-full" onclick="handleRegister()">
+          <i class="fa-solid fa-user-plus"></i> Create Account
+        </button>
+        <p class="auth-switch">
+          Already have an account?
+          <a href="#" onclick="showAuthForm('login')">Sign in</a>
+        </p>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════
+       MAIN APP (hidden until login)
+  ══════════════════════════════════════════════════════════════ -->
+  <div id="app-shell" style="display:none">
+
+    <!-- Toast Layer -->
+    <div id="toast-container"></div>
+
+    <!-- Navigation -->
+    <header class="glass-navbar">
+      <div class="nav-container">
+        <div class="nav-logo" onclick="switchTab('landing')">
+          <i class="fa-solid fa-cube logo-icon animate-pulse"></i>
+          <span>Votify<span class="text-accent">.</span></span>
+        </div>
+        <nav class="nav-links">
+          <a href="#" class="nav-link active" onclick="switchTab('landing')" id="nav-landing">Home</a>
+          <a href="#" class="nav-link" onclick="switchTab('vote')"    id="nav-vote">Vote</a>
+          <a href="#" class="nav-link" onclick="switchTab('results')" id="nav-results">Dashboard</a>
+          <a href="#" class="nav-link" id="nav-admin" onclick="switchTab('admin')" style="display:none">Admin</a>
+        </nav>
+        <div class="nav-right">
+          <div class="user-pill" id="user-pill" style="display:none">
+            <div class="user-avatar" id="user-pill-avatar">A</div>
+            <span id="user-pill-name">Admin</span>
+            <button class="logout-btn" onclick="handleLogout()" title="Sign Out">
+              <i class="fa-solid fa-right-from-bracket"></i>
+            </button>
+          </div>
+          <button class="btn btn-outline-sm mobile-menu-btn" onclick="toggleMobileMenu()" style="display:none; padding:.5rem .75rem; min-width:unset">
+            <i class="fa-solid fa-bars"></i>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <main class="container">
+
+      <!-- ══ TAB 1: LANDING ══ -->
+      <section id="tab-landing" class="tab-content active">
+        <div class="hero-section">
+          <div class="hero-text">
+            <span class="badge">Next-Gen E-Voting</span>
+            <h1>Secure Your Vote with <span class="text-gradient">Blockchain Trust</span></h1>
+            <p class="hero-lead">Votify leverages decentralized Ethereum smart contracts to deliver a transparent, immutable, and fraud-proof voting experience for the digital age.</p>
+            <div class="hero-actions">
+              <button class="btn btn-primary btn-lg" onclick="switchTab('vote')">
+                <i class="fa-solid fa-check-to-slot"></i> Get Started
+              </button>
+              <button class="btn btn-outline btn-lg" onclick="switchTab('results')">
+                <i class="fa-solid fa-chart-line"></i> Live Analytics
+              </button>
+            </div>
+          </div>
+          <div class="hero-image">
+            <div class="glass-card premium-card">
+              <div class="card-header">
+                <h3><i class="fa-solid fa-shield-halved text-accent"></i> Core Benefits</h3>
+              </div>
+              <ul class="benefit-list">
+                <li><i class="fa-solid fa-circle-check"></i> <div><strong>Tamper-Proof</strong> — Once cast, your vote is eternal.</div></li>
+                <li><i class="fa-solid fa-circle-check"></i> <div><strong>100% Transparent</strong> — Verifiable on the public ledger.</div></li>
+                <li><i class="fa-solid fa-circle-check"></i> <div><strong>Identity Verified</strong> — Secure wallet-based authentication.</div></li>
+                <li><i class="fa-solid fa-circle-check"></i> <div><strong>Real-time Results</strong> — Instant, auditable tallying.</div></li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ══ TAB 2: VOTE ══ -->
+      <section id="tab-vote" class="tab-content">
+        <div class="tab-header">
+          <span class="badge">Voting Portal</span>
+          <h2>Election Candidates</h2>
+          <p class="section-desc">Click <strong>Vote for this Candidate</strong> to cast your secure blockchain vote. You can only vote once.</p>
+        </div>
+
+        <!-- Contract Address -->
+        <div class="glass-card mb-4 contract-bar">
+          <div class="stat-icon"><i class="fa-solid fa-file-contract"></i></div>
+          <div class="flex-grow">
+            <h4>Contract Integration <span class="optional-tag">optional</span></h4>
+            <p class="section-desc" style="font-size:0.82rem">Paste your Remix-deployed contract address to vote directly on-chain.</p>
+          </div>
+          <input type="text" id="custom-contract-address" placeholder="0x... (leave blank for simulation)" class="contract-input" onchange="updateCustomContractAddress()">
+        </div>
+
+        <!-- Voter Status Banner -->
+        <div class="glass-card status-card mb-4" id="voter-eligibility-card">
+          <div class="status-icon"><i class="fa-solid fa-user-shield"></i></div>
+          <div class="status-text">
+            <h4 id="voter-status-title">Checking Status...</h4>
+            <p id="voter-status-desc">Please wait while we verify your voter identity.</p>
+          </div>
+          <div class="status-action">
+            <button class="btn btn-outline-sm" onclick="registerMeAsVoter()" id="btn-self-register" style="display:none">Register Voter</button>
+          </div>
+        </div>
+
+        <!-- Already Voted Banner -->
+        <div class="glass-card voted-banner mb-4" id="voted-banner" style="display:none">
+          <i class="fa-solid fa-check-double voted-banner-icon"></i>
+          <div>
+            <h4>Vote Recorded Successfully!</h4>
+            <p>Your vote has been permanently stored on the blockchain. Thank you for participating.</p>
+          </div>
+            <i class="fa-solid fa-chart-bar"></i> See Live Results
+          </button>
+        </div>
+
+        <!-- Candidates Grid -->
+        <div class="candidates-grid" id="candidates-container">
+          <div class="glass-card candidate-card text-center loading-card">
+            <i class="fa-solid fa-spinner fa-spin text-accent"></i>
+            <p>Loading Candidates...</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ══ TAB 3: RESULTS ══ -->
+      <section id="tab-results" class="tab-content">
+        <div class="tab-header">
+          <span class="badge">Live Election Data</span>
+          <h2>Results &amp; Analytics</h2>
+          <p class="section-desc">Tamper-proof vote tally directly from the Ethereum blockchain.</p>
+        </div>
+        <div class="winner-box" id="winner-box" style="display:none"></div>
+        <div class="results-grid">
+          <div class="results-stats">
+            <div class="glass-card stat-item">
+              <div class="stat-icon"><i class="fa-solid fa-users"></i></div>
+              <div class="stat-content">
+                <span class="stat-label">Registered Voters</span>
+                <span class="stat-value" id="stat-voters">0</span>
+              </div>
+            </div>
+            <div class="glass-card stat-item">
+              <div class="stat-icon"><i class="fa-solid fa-square-poll-vertical"></i></div>
+              <div class="stat-content">
+                <span class="stat-label">Total Votes Cast</span>
+                <span class="stat-value" id="stat-votes">0</span>
+              </div>
+            </div>
+            <div class="glass-card stat-item">
+              <div class="stat-icon"><i class="fa-solid fa-hourglass-start"></i></div>
+              <div class="stat-content">
+                <span class="stat-label">Election Status</span>
+                <span class="stat-value text-green" id="stat-status">Active</span>
+              </div>
+            </div>
+          </div>
+          <div class="glass-card chart-card">
+            <div class="card-header">
+              <h3><i class="fa-solid fa-chart-column text-accent"></i> Vote Distribution</h3>
+              <button class="btn btn-outline-sm" onclick="fetchResults()"><i class="fa-solid fa-rotate"></i> Refresh</button>
+            </div>
+            <div class="chart-container">
+              <canvas id="electionChart"></canvas>
+            </div>
+          </div>
+        </div>
+        <div class="glass-card" style="margin-top:2rem">
+          <div class="card-header" style="margin-bottom:1rem">
+            <h3><i class="fa-solid fa-trophy text-accent"></i> Candidate Leaderboard</h3>
+          </div>
+          <div id="leaderboard"></div>
+        </div>
+      </section>
+
+      <!-- ══ TAB 4: ADMIN ══ -->
+      <section id="tab-admin" class="tab-content">
+        <div class="tab-header">
+          <span class="badge">Authority Center</span>
+          <h2>Management Portal</h2>
+          <p class="section-desc">Select a feature from the sidebar to manage the election.</p>
+        </div>
+
+        <!-- Admin layout: sidebar + content area -->
+        <div class="admin-layout">
+
+          <!-- ── Sidebar Nav ── -->
+          <nav class="admin-sidebar">
+            <button class="admin-nav-btn active" id="anb-election"   onclick="switchAdminPanel('election')">
+              <span class="anb-icon"><i class="fa-solid fa-toggle-on"></i></span>
+              <span class="anb-label">Election Control</span>
+              <i class="fa-solid fa-chevron-right anb-arrow"></i>
+            </button>
+            <button class="admin-nav-btn" id="anb-candidate"  onclick="switchAdminPanel('candidate')">
+              <span class="anb-icon"><i class="fa-solid fa-user-tie"></i></span>
+              <span class="anb-label">Add Candidate</span>
+              <i class="fa-solid fa-chevron-right anb-arrow"></i>
+            </button>
+            <button class="admin-nav-btn" id="anb-voter"      onclick="switchAdminPanel('voter')">
+              <span class="anb-icon"><i class="fa-solid fa-address-book"></i></span>
+              <span class="anb-label">Register Voter</span>
+              <i class="fa-solid fa-chevron-right anb-arrow"></i>
+            </button>
+            <button class="admin-nav-btn" id="anb-users"      onclick="switchAdminPanel('users')">
+              <span class="anb-icon"><i class="fa-solid fa-users"></i></span>
+              <span class="anb-label">Registered Users</span>
+              <i class="fa-solid fa-chevron-right anb-arrow"></i>
+            </button>
+            <button class="admin-nav-btn" id="anb-password"   onclick="switchAdminPanel('password')">
+              <span class="anb-icon"><i class="fa-solid fa-key"></i></span>
+              <span class="anb-label">Change Password</span>
+              <i class="fa-solid fa-chevron-right anb-arrow"></i>
+            </button>
+          </nav>
+
+          <!-- ── Content Panels ── -->
+          <div class="admin-content">
+
+            <!-- PANEL: Election Control -->
+            <div class="admin-panel glass-card" id="panel-election">
+              <div class="panel-header">
+                <div class="panel-header-icon"><i class="fa-solid fa-toggle-on"></i></div>
+                <div>
+                  <h3>Election Session Control</h3>
+                  <p class="desc">Toggle the election's active state. When closed, no new votes can be submitted.</p>
+                </div>
+              </div>
+              <div class="panel-divider"></div>
+              <div class="election-status-display">
+                <div class="election-indicator" id="election-indicator">
+                  <span class="indicator-dot active-dot"></span>
+                  <span id="election-status-text">Election is <strong>Active</strong></span>
+                </div>
+                <p class="desc" style="margin-top:.5rem">Voters can currently cast their votes on the blockchain.</p>
+              </div>
+              <button class="btn btn-danger" id="btn-toggle-election" onclick="toggleElection()" style="margin-top:1.5rem">
+                <i class="fa-solid fa-stop"></i> Close Election
+              </button>
+              <button class="btn btn-danger" onclick="adminResetVotes()" style="margin-top:.75rem; background:rgba(220,38,38,.06); border-color:#f59e0b; color:#d97706;" title="Clear all votes and allow users to vote again">
+                <i class="fa-solid fa-rotate-left"></i> Reset All Votes
+              </button>
+
+              <!-- Wallet Connection (Admin Only) -->
+              <div class="panel-divider" style="margin-top:1.5rem"></div>
+              <div class="wallet-section">
+                <div class="wallet-section-header">
+                  <i class="fa-solid fa-wallet" style="color:var(--accent)"></i>
+                  <div>
+                    <strong>Blockchain Wallet</strong>
+                    <p class="desc" style="margin:0">Required for on-chain contract interactions.</p>
+                  </div>
+                </div>
+                <div id="wallet-status-panel" class="wallet-status-row">
+                  <span class="wallet-dot disconnected-dot"></span>
+                  <span id="wallet-panel-text" style="font-size:.88rem;font-weight:600;color:var(--text-secondary)">Not connected</span>
+                </div>
+                <div style="display:flex;gap:.75rem;margin-top:.75rem;flex-wrap:wrap">
+                  <button class="btn btn-primary" id="btn-panel-connect" onclick="connectWallet()">
+                    <i class="fa-solid fa-plug"></i> Connect Wallet
+                  </button>
+                  <button class="btn btn-danger" id="btn-panel-disconnect" onclick="disconnectWallet()" style="display:none">
+                    <i class="fa-solid fa-plug-circle-xmark"></i> Disconnect
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- PANEL: Register Candidate -->
+            <div class="admin-panel glass-card" id="panel-candidate" style="display:none">
+              <div class="panel-header">
+                <div class="panel-header-icon" style="background:rgba(94,92,230,.12);color:var(--accent)"><i class="fa-solid fa-user-tie"></i></div>
+                <div>
+                  <h3>Register Candidate</h3>
+                  <p class="desc">Add a candidate to the active election ballot.</p>
+                </div>
+              </div>
+              <div class="panel-divider"></div>
+              
+              <div class="panel-grid-2">
+                <!-- Registration Form -->
+                <form id="form-register-candidate" onsubmit="handleRegisterCandidate(event)" class="panel-form">
+                  <div class="form-group">
+                    <label for="cand-name"><i class="fa-solid fa-user"></i> Candidate Full Name</label>
+                    <input type="text" id="cand-name" placeholder="e.g. Amit Kumar" required>
+                  </div>
+                  <div class="form-group">
+                    <label for="cand-party"><i class="fa-solid fa-flag"></i> Party / Affiliation</label>
+                    <input type="text" id="cand-party" placeholder="e.g. Bharatiya Janata Party" required>
+                  </div>
+
+                  <!-- Symbol Picker -->
+                  <div class="form-group">
+                    <label><i class="fa-solid fa-icons"></i> Party Symbol <span class="optional-tag">click to select</span></label>
+                    <div class="symbol-picker-grid">
+                      <button type="button" class="symbol-pick-btn" onclick="pickSymbol('🪷',this)" title="BJP – Lotus">🪷</button>
+                      <button type="button" class="symbol-pick-btn" onclick="pickSymbol('✋',this)" title="Congress – Hand">✋</button>
+                      <button type="button" class="symbol-pick-btn" onclick="pickSymbol('🧹',this)" title="AAP – Broom">🧹</button>
+                      <button type="button" class="symbol-pick-btn" onclick="pickSymbol('🚲',this)" title="SP – Bicycle">🚲</button>
+                      <button type="button" class="symbol-pick-btn" onclick="pickSymbol('🐘',this)" title="BSP – Elephant">🐘</button>
+                      <button type="button" class="symbol-pick-btn" onclick="pickSymbol('⏰',this)" title="NCP – Clock">⏰</button>
+                    </div>
+                    <input type="text" id="cand-symbol" placeholder="Or emoji symbol..." style="margin-top:.5rem">
+                  </div>
+
+                  <button class="btn btn-primary btn-full" type="submit" style="margin-top:1rem">
+                    <i class="fa-solid fa-plus-circle"></i> Add Candidate
+                  </button>
+                </form>
+
+                <!-- Existing Candidates List -->
+                <div class="admin-sub-panel">
+                  <h4 style="margin-bottom:1rem;font-size:.9rem;color:var(--text-secondary)">Registered Candidates</h4>
+                  <div id="admin-candidates-list" class="admin-mini-list"></div>
+                </div>
+              </div>
+            </div>
+
+
+            <!-- PANEL: Register Voter -->
+            <div class="admin-panel glass-card" id="panel-voter" style="display:none">
+              <div class="panel-header">
+                <div class="panel-header-icon" style="background:rgba(48,209,88,.08);color:var(--green)"><i class="fa-solid fa-address-book"></i></div>
+                <div>
+                  <h3>Register Voter</h3>
+                  <p class="desc">Authorize an Ethereum wallet address to participate in this election.</p>
+                </div>
+              </div>
+              <div class="panel-divider"></div>
+              <form id="form-register-voter" onsubmit="handleRegisterVoter(event)" class="panel-form">
+                <div class="form-group" style="max-width:480px">
+                  <label for="voter-address"><i class="fa-brands fa-ethereum"></i> Ethereum Wallet Address (0x...)</label>
+                  <input type="text" id="voter-address" placeholder="0x71C065161D21A3B..." required>
+                </div>
+                <button class="btn btn-outline" type="submit" style="align-self:flex-start; margin-top:.5rem">
+                  <i class="fa-solid fa-user-check"></i> Authorize Voter
+                </button>
+              </form>
+            </div>
+
+            <!-- PANEL: Registered Users -->
+            <div class="admin-panel glass-card" id="panel-users" style="display:none">
+              <div class="panel-header">
+                <div class="panel-header-icon" style="background:rgba(162,89,255,.1);color:var(--purple)"><i class="fa-solid fa-users"></i></div>
+                <div>
+                  <h3>Registered Users</h3>
+                  <p class="desc">All voter accounts currently registered in the Votify system.</p>
+                </div>
+              </div>
+              <div class="panel-divider"></div>
+              <div id="users-table"></div>
+            </div>
+
+            <!-- PANEL: Change Password -->
+            <div class="admin-panel glass-card" id="panel-password" style="display:none">
+              <div class="panel-header">
+                <div class="panel-header-icon" style="background:rgba(255,214,10,.08);color:var(--gold)"><i class="fa-solid fa-key"></i></div>
+                <div>
+                  <h3>Change Admin Password</h3>
+                  <p class="desc">Update the administrator password. Your current password is required.</p>
+                </div>
+              </div>
+              <div class="panel-divider"></div>
+              <form id="form-change-password" onsubmit="handleChangePassword(event)" class="panel-form" style="max-width:440px">
+                <div class="form-group">
+                  <label for="cp-current"><i class="fa-solid fa-lock"></i> Current Password</label>
+                  <div class="input-eye-wrap">
+                    <input type="password" id="cp-current" placeholder="Enter current password" required>
+                    <button type="button" class="eye-btn" onclick="toggleEye('cp-current',this)"><i class="fa-solid fa-eye"></i></button>
+                  </div>
+                </div>
+                <div class="form-group">
+                  <label for="cp-new"><i class="fa-solid fa-lock-open"></i> New Password</label>
+                  <div class="input-eye-wrap">
+                    <input type="password" id="cp-new" placeholder="Min 6 characters" required>
+                    <button type="button" class="eye-btn" onclick="toggleEye('cp-new',this)"><i class="fa-solid fa-eye"></i></button>
+                  </div>
+                </div>
+                <div class="form-group">
+                  <label for="cp-confirm"><i class="fa-solid fa-check-double"></i> Confirm New Password</label>
+                  <div class="input-eye-wrap">
+                    <input type="password" id="cp-confirm" placeholder="Repeat new password" required>
+                    <button type="button" class="eye-btn" onclick="toggleEye('cp-confirm',this)"><i class="fa-solid fa-eye"></i></button>
+                  </div>
+                </div>
+                <div id="cp-error" class="auth-error" style="display:none"></div>
+                <button class="btn btn-primary" type="submit" style="align-self:flex-start">
+                  <i class="fa-solid fa-shield-check"></i> Update Password
+                </button>
+              </form>
+            </div>
+
+          </div><!-- /.admin-content -->
+        </div><!-- /.admin-layout -->
+      </section>
+
+
+    </main>
+
+    <footer class="glass-footer text-center">
+      <p>&copy; 2026 Votify E-Voting System &mdash; Powered by Ethereum Smart Contracts &amp; Node.js</p>
+    </footer>
+
+  </div><!-- /#app-shell -->
+
+  <script src="app.js"></script>
+</body>
+</html>

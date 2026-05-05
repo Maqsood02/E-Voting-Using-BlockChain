@@ -1,0 +1,14 @@
+{
+  "version": 2,
+  "name": "votify-e-voting",
+  "builds": [
+    { "src": "frontend/**", "use": "@vercel/static" },
+    { "src": "backend/server.js", "use": "@vercel/node" }
+  ],
+  "routes": [
+    { "src": "/api/(.*)", "dest": "backend/server.js" },
+    { "src": "/(.*)", "dest": "frontend/$1" },
+    { "handle": "filesystem" },
+    { "src": "/(.*)", "dest": "frontend/index.html" }
+  ]
+}
