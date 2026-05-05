@@ -5,7 +5,7 @@
 // ════════════════════════════════════════════════════════════════
 
 // ─── Configuration ───────────────────────────────────────────────────────────
-const BACKEND_URL = 'http://127.0.0.1:5000';
+const BACKEND_URL = ''; // Empty for relative paths (works on Vercel)
 
 // ─── Auth Storage Keys ────────────────────────────────────────────────────────
 const KEY_USERS      = 'votify_users';      // array of voter accounts
