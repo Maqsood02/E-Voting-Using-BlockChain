@@ -1359,6 +1359,10 @@ body {
         min-width: 600px;
     }
 
+    .lb-table td, .lb-table th {
+        white-space: nowrap;
+    }
+
     .panel-grid-2 {
         display: flex !important;
         flex-direction: column !important;
@@ -1376,6 +1380,18 @@ body {
         display: flex !important;
         flex-direction: column !important;
         gap: 1.5rem;
+        min-width: 0;
+    }
+
+    .admin-content {
+        min-width: 0;
+        width: 100%;
+    }
+
+    .admin-panel {
+        padding: 1.25rem !important;
+        width: 100%;
+        overflow: hidden;
     }
 
     .admin-sidebar {
