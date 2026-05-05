@@ -1,10 +1,39 @@
 const express = require('express');
 const cors = require('cors');
 const { ethers } = require('ethers');
+const mongoose = require('mongoose');
 require('dotenv').config();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/votify';
+
+// MongoDB Connection
+mongoose.connect(MONGODB_URI)
+  .then(() => console.log('Connected to MongoDB successfully'))
+  .catch(err => console.error('MongoDB connection error:', err));
+
+// --- Schemas & Models ---
+const userSchema = new mongoose.Schema({
+  name: { type: String, required: true },
+  email: { type: String, required: true, unique: true },
+  password: { type: String, required: true },
+  role: { type: String, enum: ['voter', 'admin'], default: 'voter' },
+  hasVoted: { type: Boolean, default: false },
+  votedFor: { type: Number, default: null } // Candidate ID
+}, { timestamps: true });
+
+const User = mongoose.model('User', userSchema);
+
+const candidateSchema = new mongoose.Schema({
+  candidateId: { type: Number, required: true, unique: true },
+  name: { type: String, required: true },
+  party: { type: String, required: true },
+  symbol: { type: String },
+  voteCount: { type: Number, default: 0 }
+}, { timestamps: true });
+
+const Candidate = mongoose.model('Candidate', candidateSchema);
 
 app.use(cors());
 app.use(express.json());
@@ -56,111 +85,181 @@ app.get('/api/health', (req, res) => {
 });
 
 /**
+ * @api {post} /api/register User Registration
+ */
+app.post('/api/register', async (req, res) => {
+  const { name, email, password, role } = req.body;
+  try {
+    const existingUser = await User.findOne({ email });
+    if (existingUser) return res.status(400).json({ error: 'User already exists' });
+
+    const user = new User({ name, email, password, role: role || 'voter' });
+    await user.save();
+    res.json({ success: true, message: 'User registered successfully', user: { name, email, role: user.role } });
+  } catch (error) {
+    res.status(500).json({ error: 'Registration failed' });
+  }
+});
+
+/**
+ * @api {post} /api/login User Login
+ */
+app.post('/api/login', async (req, res) => {
+  const { email, password } = req.body;
+  try {
+    const user = await User.findOne({ email, password });
+    if (!user) return res.status(401).json({ error: 'Invalid credentials' });
+
+    res.json({ success: true, user: { name: user.name, email: user.email, role: user.role } });
+  } catch (error) {
+    res.status(500).json({ error: 'Login failed' });
+  }
+});
+
+/**
+ * @api {post} /api/change-password Admin Password Change
+ */
+app.post('/api/change-password', async (req, res) => {
+  const { email, currentPassword, newPassword } = req.body;
+  try {
+    const user = await User.findOne({ email, password: currentPassword });
+    if (!user) return res.status(401).json({ error: 'Current password incorrect' });
+
+    user.password = newPassword;
+    await user.save();
+    res.json({ success: true, message: 'Password updated' });
+  } catch (error) {
+    res.status(500).json({ error: 'Update failed' });
+  }
+});
+
+/**
+ * @api {get} /api/users Get All Users (Admin)
+ */
+app.get('/api/users', async (req, res) => {
+  try {
+    const users = await User.find({}, '-password');
+    res.json({ success: true, users });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch users' });
+  }
+});
+
+/**
  * @api {post} /api/register-voter Register Voter
- * Allows Admin to register a voter address via the backend.
  */
 app.post('/api/register-voter', async (req, res) => {
-  const { voterAddress } = req.body;
-  if (!voterAddress) {
-    return res.status(400).json({ error: 'Voter address is required' });
-  }
-
-  if (!contract) {
-    return res.status(500).json({ error: 'Blockchain backend not initialized. Set env variables.' });
-  }
-
+  const { voterAddress, email } = req.body;
+  
   try {
-    const tx = await contract.registerVoter(voterAddress);
-    await tx.wait();
-    res.json({ success: true, transactionHash: tx.hash, message: 'Voter successfully registered.' });
+    // If blockchain is active, register there
+    if (contract) {
+      const tx = await contract.registerVoter(voterAddress);
+      await tx.wait();
+    }
+    
+    // If email provided, update MongoDB user
+    if (email) {
+      await User.findOneAndUpdate({ email: email.toLowerCase() }, { hasVoted: true });
+    }
+
+    res.json({ success: true, message: 'Voter registered.' });
   } catch (error) {
-    console.error('Error registering voter:', error);
-    res.status(500).json({ error: error.reason || error.message || 'Failed to register voter' });
+    res.status(500).json({ error: error.message });
   }
 });
 
 /**
  * @api {post} /api/register-candidate Register Candidate
- * Allows Admin to add a candidate to the ballot.
  */
 app.post('/api/register-candidate', async (req, res) => {
-  const { name, party } = req.body;
-  if (!name || !party) {
-    return res.status(400).json({ error: 'Candidate name and party are required' });
-  }
-
-  if (!contract) {
-    return res.status(500).json({ error: 'Blockchain backend not initialized. Set env variables.' });
-  }
-
+  const { name, party, symbol } = req.body;
+  
   try {
-    const tx = await contract.registerCandidate(name, party);
-    await tx.wait();
-    res.json({ success: true, transactionHash: tx.hash, message: 'Candidate registered successfully.' });
+    let candidateId = Date.now(); // Default ID for simulation
+    
+    if (contract) {
+      const tx = await contract.registerCandidate(name, party);
+      await tx.wait();
+      const count = await contract.candidatesCount();
+      candidateId = Number(count);
+    }
+
+    const candidate = new Candidate({ candidateId, name, party, symbol });
+    await candidate.save();
+
+    res.json({ success: true, message: 'Candidate added to MongoDB and Blockchain.' });
   } catch (error) {
-    console.error('Error registering candidate:', error);
-    res.status(500).json({ error: error.reason || error.message || 'Failed to register candidate' });
+    res.status(500).json({ error: error.message });
   }
 });
 
 /**
  * @api {get} /api/candidates Fetch Candidates
- * Fetches all active candidates and their details.
  */
 app.get('/api/candidates', async (req, res) => {
-  if (!contract) {
-    return res.status(500).json({ error: 'Blockchain backend not initialized' });
-  }
-
   try {
-    // Calling the smart contract function to fetch all candidates directly
-    const rawCandidates = await contract.getAllCandidates();
-    const formattedCandidates = rawCandidates.map(c => ({
-      id: Number(c.id),
-      name: c.name,
-      party: c.party,
-      voteCount: Number(c.voteCount)
-    }));
+    let candidates = await Candidate.find().sort({ candidateId: 1 });
+    
+    // If MongoDB is empty but blockchain is active, try syncing
+    if (candidates.length === 0 && contract) {
+      const raw = await contract.getAllCandidates();
+      candidates = raw.map(c => ({
+        candidateId: Number(c.id),
+        name: c.name,
+        party: c.party,
+        voteCount: Number(c.voteCount)
+      }));
+      // Bulk insert to MongoDB if needed
+      if (candidates.length > 0) await Candidate.insertMany(candidates);
+    }
 
-    res.json({ success: true, candidates: formattedCandidates });
+    res.json({ success: true, candidates });
   } catch (error) {
-    console.error('Error fetching candidates:', error);
-    res.status(500).json({ error: error.reason || error.message || 'Failed to fetch candidates' });
+    res.status(500).json({ error: 'Failed to fetch candidates' });
   }
 });
 
 /**
  * @api {get} /api/results Get Results
- * Aggregates candidate data and voting status for the frontend dashboard.
  */
 app.get('/api/results', async (req, res) => {
-  if (!contract) {
-    return res.status(500).json({ error: 'Blockchain backend not initialized' });
-  }
-
   try {
-    const rawCandidates = await contract.getAllCandidates();
-    const candidatesCount = Number(await contract.candidatesCount());
-    const votersCount = Number(await contract.votersCount());
-    const votingActive = await contract.votingActive();
-
-    const candidates = rawCandidates.map(c => ({
-      id: Number(c.id),
-      name: c.name,
-      party: c.party,
-      voteCount: Number(c.voteCount)
-    }));
+    const candidates = await Candidate.find().sort({ voteCount: -1 });
+    const votersCount = await User.countDocuments({ hasVoted: true });
+    const candidatesCount = candidates.length;
 
     res.json({
       success: true,
-      votingActive,
       candidatesCount,
       votersCount,
       candidates
     });
   } catch (error) {
-    console.error('Error fetching results:', error);
-    res.status(500).json({ error: error.reason || error.message || 'Failed to fetch results' });
+    res.status(500).json({ error: 'Failed to fetch results' });
+  }
+});
+
+/**
+ * @api {post} /api/vote Cast Vote
+ */
+app.post('/api/vote', async (req, res) => {
+  const { email, candidateId } = req.body;
+  try {
+    const user = await User.findOne({ email });
+    if (!user || user.hasVoted) return res.status(400).json({ error: 'Already voted' });
+
+    // Update candidate vote count
+    await Candidate.findOneAndUpdate({ candidateId }, { $inc: { voteCount: 1 } });
+    
+    // Update user status
+    user.hasVoted = true;
+    user.votedFor = candidateId;
+    await user.save();
+
+    res.json({ success: true, message: 'Vote recorded in MongoDB' });
+  } catch (error) {
+    res.status(500).json({ error: 'Voting failed' });
   }
 });
 
