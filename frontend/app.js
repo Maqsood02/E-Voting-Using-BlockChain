@@ -217,7 +217,7 @@ async function handleRegister() {
 }
 
 /** Start a session (save to localStorage, update UI) */
-function startSession(session) {
+async function startSession(session) {
   currentSession = session;
   localStorage.setItem(KEY_SESSION, JSON.stringify(session));
 
@@ -242,21 +242,20 @@ function startSession(session) {
   const adminTab = document.getElementById('tab-admin');
   if (adminTab) adminTab.style.display = session.role === 'admin' ? '' : 'none';
 
-  // Always navigate to the Home tab on every login — never inherit a stale tab
+  // Always navigate to the Home tab on every login
   switchTab('landing');
 
   // Init app data
-  fetchCandidates();
-  fetchResults();
-  checkVoterStatus();
+  await fetchCandidates();
+  await fetchResults();
+  await checkVoterStatus();
 
-  // Admin-only: populate users table & try silent wallet auto-connect
   // Admin-only: populate users table
   if (session.role === 'admin') {
     renderUsersTable();
   }
 
-  // Auto-connect wallet for ALL users silently (MetaMask remembers permission)
+  // Auto-connect wallet
   autoConnectWallet();
 
   console.log(`✅ Session started: ${session.name} (${session.role})`);
@@ -431,7 +430,7 @@ function updateCustomContractAddress() {
 }
 
 // ─── Tab Switcher ─────────────────────────────────────────────────────────────
-function switchTab(tabId) {
+async function switchTab(tabId) {
   document.querySelectorAll('.nav-link').forEach(l  => l.classList.remove('active'));
   document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
 
@@ -439,8 +438,8 @@ function switchTab(tabId) {
   const tab  = document.getElementById(`tab-${tabId}`);
   if (link && tab) { link.classList.add('active'); tab.classList.add('active'); }
 
-  if (tabId === 'results') fetchResults();
-  if (tabId === 'vote')    { fetchCandidates(); checkVoterStatus(); }
+  if (tabId === 'results') await fetchResults();
+  if (tabId === 'vote')    { await fetchCandidates(); await checkVoterStatus(); }
   if (tabId === 'admin')   { renderUsersTable(); renderAdminCandidates(); }
 
   // Auto-close mobile menu if open
@@ -550,28 +549,42 @@ function updatePanelWallet(addressText, connected) {
 
 
 // ─── Voter Status Card ────────────────────────────────────────────────────────
-function checkVoterStatus() {
+async function checkVoterStatus() {
   const title = document.getElementById('voter-status-title');
   const desc  = document.getElementById('voter-status-desc');
   const btn   = document.getElementById('btn-self-register');
 
   if (!currentAccount) {
-    title.innerText = 'Wallet Not Connected';
-    desc.innerText  = 'No wallet is currently connected. Please ask the administrator to connect the blockchain wallet, then try again.';
-    btn.style.display = 'none';
+    if (title) title.innerText = 'Wallet Not Connected';
+    if (desc) desc.innerText  = 'No wallet is currently connected. Please ask the administrator to connect the blockchain wallet, then try again.';
+    if (btn) btn.style.display = 'none';
     return;
   }
 
-  const votedId = getVotedCandidateId();
-  if (votedId !== null) {
-    const cand = mockCandidates.find(c => c.id === votedId);
-    title.innerText = "✅ You Have Already Voted";
-    desc.innerText  = `Your vote has been permanently recorded${cand ? ` for ${cand.name}` : ''}. You cannot vote again.`;
-    btn.style.display = "none";
+  // Fetch real status from backend if logged in
+  let votedId = null;
+  if (currentSession) {
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/user-status?email=${currentSession.email}`);
+      const data = await res.json();
+      if (data.success && data.hasVoted) {
+        votedId = data.votedFor;
+      }
+    } catch(e) {
+      console.warn("Status fetch failed, using local fallback");
+    }
+  }
 
-    // Show an "already voted" visual banner in the vote tab
+  if (votedId !== null) {
+    title.innerText = "✅ You Have Already Voted";
+    desc.innerText  = `Your vote has been permanently recorded in the database. You cannot vote again.`;
+    if (btn) btn.style.display = "none";
+
     const banner = document.getElementById('voted-banner');
     if (banner) banner.style.display = 'flex';
+    
+    // Refresh cards to show 'Voted' state
+    await fetchCandidates();
     return;
   }
 
@@ -580,7 +593,7 @@ function checkVoterStatus() {
 
   title.innerText = "✅ Wallet Connected — Ready to Vote";
   desc.innerText  = `Address: ${currentAccount}. Cast your vote below — each wallet can vote only once.`;
-  btn.style.display = "none";
+  if (btn) btn.style.display = "none";
 }
 
 // ─── Register Voter (Admin API) ───────────────────────────────────────────────
@@ -615,7 +628,11 @@ async function fetchCandidates() {
   try {
     const res  = await fetch(`${BACKEND_URL}/api/candidates`);
     const data = await res.json();
-    if (data.success && data.candidates.length) { 
+    if (data.success) { 
+      if (data.candidates.length === 0) {
+        renderCandidateCards([]);
+        return;
+      }
       // Map candidateId to id for frontend consistency
       const mapped = data.candidates.map(c => ({
         ...c,
@@ -624,8 +641,11 @@ async function fetchCandidates() {
       renderCandidateCards(mapped); 
       return; 
     }
-  } catch {}
-  // 3. Simulation — load persisted vote counts before rendering
+  } catch(err) {
+    console.warn("Backend candidates fetch failed, using simulation:", err);
+  }
+
+  // 3. Simulation fallback
   loadVoteCounts();
   renderCandidateCards(mockCandidates);
 }
