@@ -826,12 +826,6 @@ async function fetchResults() {
     } catch {}
   }
 
-  // In simulation, always read latest persisted vote counts
-  if (!customContractAddress) {
-    loadVoteCounts();
-    candidates = [...mockCandidates];
-  }
-
   const totalVotes = candidates.reduce((s,c) => s + c.voteCount, 0);
 
   // Update stat cards
