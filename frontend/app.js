@@ -231,6 +231,8 @@ function startSession(session) {
   const initials = session.name.split(' ').map(w => w[0]).join('').toUpperCase().substring(0,2);
   document.getElementById('user-pill-avatar').innerText = initials;
   document.getElementById('user-pill-name').innerText   = session.name;
+  const userPill = document.getElementById('user-pill');
+  if (userPill) userPill.style.display = 'flex';
 
   // Show/hide Admin nav link
   const adminLink = document.getElementById('nav-admin');
@@ -267,6 +269,10 @@ function handleLogout() {
   // Note: do NOT clear currentAccount/provider/signer here.
   // The wallet stays authorised so the next user can vote without reconnecting.
   localStorage.removeItem(KEY_SESSION);
+
+  // Hide user pill
+  const userPill = document.getElementById('user-pill');
+  if (userPill) userPill.style.display = 'none';
 
   document.getElementById('app-shell').style.display  = 'none';
   document.getElementById('auth-overlay').style.display = 'flex';
