@@ -1,0 +1,12 @@
+{
+  "name": "votify-e-voting",
+  "version": "1.0.0",
+  "description": "Decentralized E-Voting System",
+  "scripts": {
+    "start": "cd backend && npm start",
+    "dev": "cd backend && npm run dev",
+    "install-all": "cd backend && npm install"
+  },
+  "author": "",
+  "license": "ISC"
+}
