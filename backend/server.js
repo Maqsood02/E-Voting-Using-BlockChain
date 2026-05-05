@@ -8,13 +8,30 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 const MONGODB_URI = (process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/votify').trim();
 
-// MongoDB Connection & Seeding
-mongoose.connect(MONGODB_URI)
-  .then(async () => {
+// MongoDB Connection Logic (Serverless friendly)
+let isConnected = false;
+const connectDB = async () => {
+  if (isConnected) return;
+  try {
+    await mongoose.connect(MONGODB_URI);
+    isConnected = true;
     console.log('Connected to MongoDB successfully');
     await seedAdmin();
-  })
-  .catch(err => console.error('MongoDB connection error:', err));
+  } catch (err) {
+    console.error('MongoDB connection error:', err);
+    throw err;
+  }
+};
+
+// Middleware to ensure DB connection
+app.use(async (req, res, next) => {
+  try {
+    await connectDB();
+    next();
+  } catch (err) {
+    res.status(500).json({ error: 'Database connection failed', details: err.message });
+  }
+});
 
 async function seedAdmin() {
   try {
