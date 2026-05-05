@@ -1451,6 +1451,7 @@ body {
     backdrop-filter: blur(10px);
     border-color: rgba(94, 92, 230, 0.2) !important;
   }
+  .results-grid  { grid-template-columns: 1fr !important; }
   .admin-layout  { grid-template-columns: 1fr; }
   .panel-grid-2  { grid-template-columns: 1fr; gap: 1.5rem; }
   
