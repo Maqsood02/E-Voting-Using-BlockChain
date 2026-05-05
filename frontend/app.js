@@ -231,6 +231,8 @@ function startSession(session) {
   const initials = session.name.split(' ').map(w => w[0]).join('').toUpperCase().substring(0,2);
   document.getElementById('user-pill-avatar').innerText = initials;
   document.getElementById('user-pill-name').innerText   = session.name;
+  const roleEl = document.getElementById('user-pill-role');
+  if (roleEl) roleEl.innerText = session.role === 'admin' ? 'Administrator' : 'Voter';
   const userPill = document.getElementById('user-pill');
   if (userPill) userPill.style.display = 'flex';
 
