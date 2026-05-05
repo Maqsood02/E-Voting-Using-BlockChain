@@ -1119,3 +1119,35 @@ function switchAdminPanel(panelId) {
   if (panelId === 'candidate') renderAdminCandidates();
 }
 
+
+// ─── Admin: Reset All Votes ──────────────────────────────────────────────────
+async function adminResetVotes() {
+  if (!confirm("⚠️ WARNING: This will permanently delete ALL cast votes and allow all users to vote again. Proceed?")) return;
+
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/reset-votes`, { method: 'POST' });
+    const data = await res.json();
+
+    if (data.success) {
+      showToast("🔄 All votes have been reset successfully!", "success");
+      
+      // Update UI
+      fetchCandidates();
+      fetchResults();
+      
+      // If the current user was a voter, refresh their status
+      if (currentSession?.role === 'voter') {
+        checkVoterStatus();
+      }
+    } else {
+      showToast(`Error: ${data.error}`, "error");
+    }
+  } catch (error) {
+    // Simulation fallback
+    mockCandidates.forEach(c => c.voteCount = 0);
+    saveData();
+    showToast("🔄 Simulation data reset locally.", "success");
+    fetchCandidates();
+    fetchResults();
+  }
+}
