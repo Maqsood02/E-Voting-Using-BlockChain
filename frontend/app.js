@@ -1,289 +1,1127 @@
-const express = require('express');
-const cors = require('cors');
-const { ethers } = require('ethers');
-const mongoose = require('mongoose');
-require('dotenv').config();
+// ════════════════════════════════════════════════════════════════
+//  VOTIFY — Full Application Script
+//  Auth: localStorage-based user & admin authentication
+//  Voting: Blockchain + simulation fallback
+// ════════════════════════════════════════════════════════════════
 
-const app = express();
-const PORT = process.env.PORT || 5000;
-const MONGODB_URI = (process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/votify').trim();
+// ─── Configuration ───────────────────────────────────────────────────────────
+const BACKEND_URL = 'http://localhost:5000';
 
-// MongoDB Connection & Seeding
-mongoose.connect(MONGODB_URI)
-  .then(async () => {
-    console.log('Connected to MongoDB successfully');
-    await seedAdmin();
-  })
-  .catch(err => console.error('MongoDB connection error:', err));
+// ─── Auth Storage Keys ────────────────────────────────────────────────────────
+const KEY_USERS      = 'votify_users';      // array of voter accounts
+const KEY_ADMIN      = 'votify_admin';      // admin credentials object
+const KEY_SESSION    = 'votify_session';    // current logged-in session
+const KEY_CANDIDATES = 'votify_candidates'; // persisted candidates array
+const KEY_VOTES      = 'votify_votes';      // persisted vote counts { candidateId: count }
 
-async function seedAdmin() {
-  try {
-    const adminExists = await User.findOne({ role: 'admin' });
-    if (!adminExists) {
-      const admin = new User({
-        name: 'Administrator',
-        email: 'admin@votify.com',
-        password: 'admin123',
-        role: 'admin'
-      });
-      await admin.save();
-      console.log('✅ Default admin account created: admin@votify.com / admin123');
-    }
-  } catch (err) {
-    console.warn('Admin seeding skipped or failed.');
-  }
-}
+// ─── Global State ───────────────────────────────────────────────────────────
+let currentAccount = null;
+let provider       = null;
+let signer         = null;
+let resultsChart   = null;
+let customContractAddress = null;
+let currentSession = null;  // { name, email, role: 'voter'|'admin' }
 
-// --- Schemas & Models ---
-const userSchema = new mongoose.Schema({
-  name: { type: String, required: true },
-  email: { type: String, required: true, unique: true },
-  password: { type: String, required: true },
-  role: { type: String, enum: ['voter', 'admin'], default: 'voter' },
-  hasVoted: { type: Boolean, default: false },
-  votedFor: { type: Number, default: null } // Candidate ID
-}, { timestamps: true });
-
-const User = mongoose.model('User', userSchema);
-
-const candidateSchema = new mongoose.Schema({
-  candidateId: { type: Number, required: true, unique: true },
-  name: { type: String, required: true },
-  party: { type: String, required: true },
-  symbol: { type: String },
-  voteCount: { type: Number, default: 0 }
-}, { timestamps: true });
-
-const Candidate = mongoose.model('Candidate', candidateSchema);
-
-app.use(cors());
-app.use(express.json());
-
-// Load configuration from environment variables
-const RPC_URL = process.env.RPC_URL || 'http://127.0.0.1:8545';
-const PRIVATE_KEY = process.env.PRIVATE_KEY;
-const CONTRACT_ADDRESS = process.env.CONTRACT_ADDRESS;
-
-// ABI for interacting with the EVoting Smart Contract
+// ─── Smart Contract ABI ─────────────────────────────────────────────────────
 const CONTRACT_ABI = [
-  "function candidatesCount() public view returns (uint256)",
-  "function votersCount() public view returns (uint256)",
-  "function votingActive() public view returns (bool)",
-  "function registerCandidate(string memory _name, string memory _party) public",
-  "function registerVoter(address _voter) public",
   "function vote(uint256 _candidateId) public",
-  "function getCandidate(uint256 _candidateId) public view returns (uint256 id, string memory name, string memory party, uint256 voteCount)",
-  "function getAllCandidates() public view returns (tuple(uint256 id, string memory name, string memory party, uint256 voteCount)[])",
-  "function voters(address) public view returns (bool isRegistered, bool hasVoted, uint256 votedCandidateId)"
+  "function registerVoter(address _voter) public",
+  "function registerCandidate(string memory _name, string memory _party) public",
+  "function getAllCandidates() public view returns (tuple(uint256 id, string memory name, string memory party, uint256 voteCount)[])"
 ];
 
-let provider;
-let wallet;
-let contract;
-
-// Initialize Blockchain connection
-if (PRIVATE_KEY && CONTRACT_ADDRESS) {
-  try {
-    provider = new ethers.JsonRpcProvider(RPC_URL);
-    wallet = new ethers.Wallet(PRIVATE_KEY, provider);
-    contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, wallet);
-    console.log(`Connected to blockchain at ${RPC_URL}`);
-    console.log(`Interacting with contract at ${CONTRACT_ADDRESS}`);
-  } catch (error) {
-    console.error('Blockchain initialization error:', error.message);
-  }
-} else {
-  console.warn('Blockchain environment variables missing. Please set RPC_URL, PRIVATE_KEY, and CONTRACT_ADDRESS in your .env file.');
+// ─── Avatar helper ───────────────────────────────────────────────────────────
+const AVATAR_COLORS = ['#5e5ce6','#30d158','#a259ff','#ff6b6b','#ffd93d'];
+function getAvatarStyle(idx) {
+  return `background:${AVATAR_COLORS[idx % AVATAR_COLORS.length]};`;
 }
 
-// Health check endpoint
-app.get('/api/health', (req, res) => {
-  res.json({
-    status: 'online',
-    contractAddress: CONTRACT_ADDRESS || 'Not connected',
-    rpcUrl: RPC_URL
+// ─── Initial Candidates (Indian parties with symbols) ──────────────────────────
+const INITIAL_CANDIDATES = [
+  { id: 1, name: "Narendra Singh",   party: "Bharatiya Janata Party",      symbol: "🪷", voteCount: 0 },
+  { id: 2, name: "Rahul Verma",      party: "Indian National Congress",    symbol: "✋", voteCount: 0 },
+  { id: 3, name: "Arvind Sharma",    party: "Aam Aadmi Party",            symbol: "🧹", voteCount: 0 }
+];
+
+let mockCandidates = [...INITIAL_CANDIDATES];
+
+/** Data Persistence Layer */
+function saveData() {
+  localStorage.setItem(KEY_CANDIDATES, JSON.stringify(mockCandidates));
+  const votesMap = {};
+  mockCandidates.forEach(c => { votesMap[c.id] = c.voteCount; });
+  localStorage.setItem(KEY_VOTES, JSON.stringify(votesMap));
+}
+
+function loadData() {
+  const savedCands = localStorage.getItem(KEY_CANDIDATES);
+  const savedVotes = JSON.parse(localStorage.getItem(KEY_VOTES) || '{}');
+
+  if (savedCands) {
+    mockCandidates = JSON.parse(savedCands);
+  } else {
+    mockCandidates = [...INITIAL_CANDIDATES];
+  }
+
+  // Ensure vote counts are synced from the votes map
+  mockCandidates.forEach(c => {
+    c.voteCount = savedVotes[c.id] || 0;
   });
-});
+  console.log('📦 Data loaded:', mockCandidates.length, 'candidates');
+}
 
-/**
- * @api {post} /api/register User Registration
- */
-app.post('/api/register', async (req, res) => {
-  const { name, email, password, role } = req.body;
-  try {
-    const existingUser = await User.findOne({ email });
-    if (existingUser) return res.status(400).json({ error: 'User already exists' });
+/** Initialize data on script load */
+loadData();
 
-    const user = new User({ name, email, password, role: role || 'voter' });
-    await user.save();
-    res.json({ success: true, message: 'User registered successfully', user: { name, email, role: user.role } });
-  } catch (error) {
-    res.status(500).json({ error: 'Registration failed' });
-  }
-});
+// ─── One-Vote-Per-User (per email, simulation) ────────────────────────────────
+function getVotedCandidateId() {
+  if (!currentSession) return null;
+  const val = localStorage.getItem(`voted_${currentSession.email.toLowerCase()}`);
+  return val ? Number(val) : null;
+}
+function recordVoteLocally(candidateId) {
+  if (!currentSession) return;
+  localStorage.setItem(`voted_${currentSession.email.toLowerCase()}`, String(candidateId));
+}
 
-/**
- * @api {post} /api/login User Login
- */
-app.post('/api/login', async (req, res) => {
-  const { email, password } = req.body;
-  try {
-    const user = await User.findOne({ email, password });
-    if (!user) return res.status(401).json({ error: 'Invalid credentials' });
+// ─── Vote Count Persistence (Legacy Helpers - maintained for compatibility) ───────
+function loadVoteCounts() { loadData(); }
+function saveVoteCounts() { saveData(); }
 
-    res.json({ success: true, user: { name: user.name, email: user.email, role: user.role } });
-  } catch (error) {
-    res.status(500).json({ error: 'Login failed' });
-  }
-});
-
-/**
- * @api {post} /api/change-password Admin Password Change
- */
-app.post('/api/change-password', async (req, res) => {
-  const { email, currentPassword, newPassword } = req.body;
-  try {
-    const user = await User.findOne({ email, password: currentPassword });
-    if (!user) return res.status(401).json({ error: 'Current password incorrect' });
-
-    user.password = newPassword;
-    await user.save();
-    res.json({ success: true, message: 'Password updated' });
-  } catch (error) {
-    res.status(500).json({ error: 'Update failed' });
-  }
-});
-
-/**
- * @api {get} /api/users Get All Users (Admin)
- */
-app.get('/api/users', async (req, res) => {
-  try {
-    const users = await User.find({}, '-password');
-    res.json({ success: true, users });
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to fetch users' });
-  }
-});
-
-/**
- * @api {post} /api/register-voter Register Voter
- */
-app.post('/api/register-voter', async (req, res) => {
-  const { voterAddress, email } = req.body;
+/** Admin: reset ALL votes and allow all users to vote again */
+function adminResetVotes() {
+  if (!confirm('⚠️ Reset ALL votes? This will clear every vote and allow all users to vote again.')) return;
   
-  try {
-    // If blockchain is active, register there
-    if (contract) {
-      const tx = await contract.registerVoter(voterAddress);
-      await tx.wait();
-    }
-    
-    // If email provided, update MongoDB user
-    if (email) {
-      await User.findOneAndUpdate({ email: email.toLowerCase() }, { hasVoted: true });
-    }
+  // Clear vote counts but keep candidates
+  mockCandidates.forEach(c => { c.voteCount = 0; });
+  saveData();
 
-    res.json({ success: true, message: 'Voter registered.' });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-/**
- * @api {post} /api/register-candidate Register Candidate
- */
-app.post('/api/register-candidate', async (req, res) => {
-  const { name, party, symbol } = req.body;
+  // Clear every user's voted flag in localStorage
+  const users = JSON.parse(localStorage.getItem(KEY_USERS) || '[]');
+  users.forEach(u => localStorage.removeItem(`voted_${u.email.toLowerCase()}`));
   
-  try {
-    let candidateId = Date.now(); // Default ID for simulation
-    
-    if (contract) {
-      const tx = await contract.registerCandidate(name, party);
-      await tx.wait();
-      const count = await contract.candidatesCount();
-      candidateId = Number(count);
+  // Also clear admin's own voted flag
+  const admin = JSON.parse(localStorage.getItem(KEY_ADMIN) || '{}');
+  if (admin.email) localStorage.removeItem(`voted_${admin.email.toLowerCase()}`);
+  
+  // Reset all simulation vote markers in localStorage
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (key.startsWith('voted_')) {
+      localStorage.removeItem(key);
+      i--; // Adjust index after removal
     }
-
-    const candidate = new Candidate({ candidateId, name, party, symbol });
-    await candidate.save();
-
-    res.json({ success: true, message: 'Candidate added to MongoDB and Blockchain.' });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
   }
-});
 
-/**
- * @api {get} /api/candidates Fetch Candidates
- */
-app.get('/api/candidates', async (req, res) => {
-  try {
-    let candidates = await Candidate.find().sort({ candidateId: 1 });
-    
-    // If MongoDB is empty but blockchain is active, try syncing
-    if (candidates.length === 0 && contract) {
-      const raw = await contract.getAllCandidates();
-      candidates = raw.map(c => ({
-        candidateId: Number(c.id),
-        name: c.name,
-        party: c.party,
-        voteCount: Number(c.voteCount)
-      }));
-      // Bulk insert to MongoDB if needed
-      if (candidates.length > 0) await Candidate.insertMany(candidates);
-    }
+  fetchCandidates();
+  fetchResults();
+  showToast('🔄 All votes reset successfully.', 'success');
+}
 
-    res.json({ success: true, candidates });
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to fetch candidates' });
+// ─── Election status ──────────────────────────────────────────────────────────
+let electionClosed = false;
+
+// ════════════════════════════════════════════════════════════════
+//  AUTH SYSTEM
+// ════════════════════════════════════════════════════════════════
+
+/** Bootstrap: set up default admin if not already stored */
+function initAuth() {
+  if (!localStorage.getItem(KEY_ADMIN)) {
+    localStorage.setItem(KEY_ADMIN, JSON.stringify({
+      email: 'admin@votify.com',
+      password: 'admin123',
+      name: 'Administrator'
+    }));
   }
-});
+  if (!localStorage.getItem(KEY_USERS)) {
+    localStorage.setItem(KEY_USERS, JSON.stringify([]));
+  }
+}
 
-/**
- * @api {get} /api/results Get Results
- */
-app.get('/api/results', async (req, res) => {
+/** Show login or register form inside the auth overlay */
+function showAuthForm(which) {
+  document.querySelectorAll('.auth-form').forEach(f => f.classList.remove('active'));
+  document.getElementById(`auth-${which}`).classList.add('active');
+  // Clear errors
+  ['login-error','reg-error'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = 'none';
+  });
+}
+
+/** Show an error inside an auth form */
+function setAuthError(id, msg) {
+  const el = document.getElementById(id);
+  if (el) { el.innerText = msg; el.style.display = 'flex'; }
+}
+
+/** Handle login submission */
+async function handleLogin() {
+  const email    = document.getElementById('login-email').value.trim().toLowerCase();
+  const password = document.getElementById('login-password').value;
+
+  if (!email || !password) {
+    setAuthError('login-error', '⚠️ Please fill in all fields.');
+    return;
+  }
+
   try {
-    const candidates = await Candidate.find().sort({ voteCount: -1 });
-    const votersCount = await User.countDocuments({ hasVoted: true });
-    const candidatesCount = candidates.length;
-
-    res.json({
-      success: true,
-      candidatesCount,
-      votersCount,
-      candidates
+    const res = await fetch(`${BACKEND_URL}/api/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password })
     });
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to fetch results' });
-  }
-});
+    const data = await res.json();
 
-/**
- * @api {post} /api/vote Cast Vote
- */
-app.post('/api/vote', async (req, res) => {
-  const { email, candidateId } = req.body;
+    if (data.success) {
+      startSession(data.user);
+    } else {
+      setAuthError('login-error', `❌ ${data.error || 'Invalid credentials'}`);
+    }
+  } catch (error) {
+    setAuthError('login-error', '❌ Backend unreachable. Please try again later.');
+  }
+}
+
+/** Handle voter registration */
+async function handleRegister() {
+  const name     = document.getElementById('reg-name').value.trim();
+  const email    = document.getElementById('reg-email').value.trim().toLowerCase();
+  const password = document.getElementById('reg-password').value;
+
+  if (!name || !email || !password) {
+    setAuthError('reg-error', '⚠️ Please fill in all fields.'); return;
+  }
+  if (password.length < 6) {
+    setAuthError('reg-error', '⚠️ Password must be at least 6 characters.'); return;
+  }
+
   try {
-    const user = await User.findOne({ email });
-    if (!user || user.hasVoted) return res.status(400).json({ error: 'Already voted' });
+    const res = await fetch(`${BACKEND_URL}/api/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, email, password, role: 'voter' })
+    });
+    const data = await res.json();
 
-    // Update candidate vote count
-    await Candidate.findOneAndUpdate({ candidateId }, { $inc: { voteCount: 1 } });
-    
-    // Update user status
-    user.hasVoted = true;
-    user.votedFor = candidateId;
-    await user.save();
-
-    res.json({ success: true, message: 'Vote recorded in MongoDB' });
+    if (data.success) {
+      showToast(`✅ Welcome, ${name}! Your account has been created.`, 'success');
+      startSession(data.user);
+    } else {
+      setAuthError('reg-error', `❌ ${data.error || 'Registration failed'}`);
+    }
   } catch (error) {
-    res.status(500).json({ error: 'Voting failed' });
+    setAuthError('reg-error', '❌ Backend unreachable.');
+  }
+}
+
+/** Start a session (save to localStorage, update UI) */
+function startSession(session) {
+  currentSession = session;
+  localStorage.setItem(KEY_SESSION, JSON.stringify(session));
+
+  // Hide auth overlay, show app
+  document.getElementById('auth-overlay').style.display = 'none';
+  document.getElementById('app-shell').style.display    = 'block';
+
+  // Update navbar user pill
+  const initials = session.name.split(' ').map(w => w[0]).join('').toUpperCase().substring(0,2);
+  document.getElementById('user-pill-avatar').innerText = initials;
+  document.getElementById('user-pill-name').innerText   = session.name;
+  const roleEl = document.getElementById('user-pill-role');
+  if (roleEl) roleEl.innerText = session.role === 'admin' ? 'Administrator' : 'Voter';
+  const userPill = document.getElementById('user-pill');
+  if (userPill) userPill.style.display = 'flex';
+
+  // Show/hide Admin nav link
+  const adminLink = document.getElementById('nav-admin');
+  if (adminLink) adminLink.style.display = session.role === 'admin' ? 'inline-block' : 'none';
+
+  // Guard: always hide admin tab content for non-admin users
+  const adminTab = document.getElementById('tab-admin');
+  if (adminTab) adminTab.style.display = session.role === 'admin' ? '' : 'none';
+
+  // Always navigate to the Home tab on every login — never inherit a stale tab
+  switchTab('landing');
+
+  // Init app data
+  fetchCandidates();
+  fetchResults();
+  checkVoterStatus();
+
+  // Admin-only: populate users table & try silent wallet auto-connect
+  // Admin-only: populate users table
+  if (session.role === 'admin') {
+    renderUsersTable();
+  }
+
+  // Auto-connect wallet for ALL users silently (MetaMask remembers permission)
+  autoConnectWallet();
+
+  console.log(`✅ Session started: ${session.name} (${session.role})`);
+}
+
+
+/** Logout — clears session but KEEPS wallet connection intact for the next user */
+function handleLogout() {
+  currentSession = null;
+  // Note: do NOT clear currentAccount/provider/signer here.
+  // The wallet stays authorised so the next user can vote without reconnecting.
+  localStorage.removeItem(KEY_SESSION);
+
+  // Hide user pill
+  const userPill = document.getElementById('user-pill');
+  if (userPill) userPill.style.display = 'none';
+
+  document.getElementById('app-shell').style.display  = 'none';
+  document.getElementById('auth-overlay').style.display = 'flex';
+
+  // Clear input fields
+  document.getElementById('login-email').value    = '';
+  document.getElementById('login-password').value = '';
+  showAuthForm('login');
+  showToast('👋 Signed out successfully.', 'info');
+}
+
+/** Handle admin password change */
+async function handleChangePassword(event) {
+  event.preventDefault();
+  const current  = document.getElementById('cp-current').value;
+  const newPass  = document.getElementById('cp-new').value;
+  const confirm  = document.getElementById('cp-confirm').value;
+  const errEl    = document.getElementById('cp-error');
+
+  if (newPass.length < 6) {
+    errEl.innerText = '⚠️ New password must be at least 6 characters.';
+    errEl.style.display = 'flex'; return;
+  }
+  if (newPass !== confirm) {
+    errEl.innerText = '❌ New passwords do not match.';
+    errEl.style.display = 'flex'; return;
+  }
+
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/change-password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ 
+        email: currentSession.email, 
+        currentPassword: current, 
+        newPassword: newPass 
+      })
+    });
+    const data = await res.json();
+
+    if (data.success) {
+      errEl.style.display = 'none';
+      document.getElementById('form-change-password').reset();
+      showToast('✅ Password updated successfully!', 'success');
+    } else {
+      errEl.innerText = `❌ ${data.error}`;
+      errEl.style.display = 'flex';
+    }
+  } catch (error) {
+    showToast('❌ Backend unreachable.', 'error');
+  }
+}
+
+/** Admin: show registered voter accounts table */
+async function renderUsersTable() {
+  const el = document.getElementById('users-table');
+  if (!el) return;
+
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/users`);
+    const data = await res.json();
+
+    if (!data.success || data.users.length === 0) {
+      el.innerHTML = '<p class="desc" style="text-align:center;padding:1rem">No voter accounts registered yet.</p>';
+      return;
+    }
+
+    el.innerHTML = `
+      <table class="lb-table">
+        <thead>
+          <tr><th>#</th><th>Name</th><th>Email</th><th>Role</th><th>Has Voted</th></tr>
+        </thead>
+        <tbody>
+          ${data.users.map((u, i) => `
+            <tr>
+              <td>${i + 1}</td>
+              <td><strong>${u.name}</strong></td>
+              <td>${u.email}</td>
+              <td><span class="badge">${u.role}</span></td>
+              <td>${u.hasVoted ? '<span class="badge-win">✅ Yes</span>' : '<span class="badge-loss">No</span>'}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>`;
+  } catch (error) {
+    el.innerHTML = '<p class="desc" style="color:var(--red);text-align:center">Error loading users.</p>';
+  }
+}
+
+/** Toggle password eye icon */
+function toggleEye(inputId, btn) {
+  const input = document.getElementById(inputId);
+  const icon  = btn.querySelector('i');
+  if (input.type === 'password') {
+    input.type = 'text';
+    icon.className = 'fa-solid fa-eye-slash';
+  } else {
+    input.type = 'password';
+    icon.className = 'fa-solid fa-eye';
+  }
+}
+
+// ─── Init ────────────────────────────────────────────────────────────────────
+window.addEventListener('DOMContentLoaded', () => {
+  initAuth();
+
+  // Support ?logout=true in URL to force show auth screen
+  const urlParams = new URLSearchParams(window.location.search);
+  if (urlParams.get('logout') === 'true') {
+    localStorage.removeItem(KEY_SESSION);
+    // Clean URL without reload
+    window.history.replaceState({}, '', window.location.pathname);
+  }
+
+  // Restore session if user was previously logged in
+  const saved = localStorage.getItem(KEY_SESSION);
+  if (saved) {
+    try {
+      const session = JSON.parse(saved);
+      // Validate session has required fields
+      if (session && session.email && session.role) {
+        startSession(session);
+      } else {
+        throw new Error('Invalid session');
+      }
+    } catch {
+      localStorage.removeItem(KEY_SESSION);
+      document.getElementById('auth-overlay').style.display = 'flex';
+      document.getElementById('app-shell').style.display    = 'none';
+    }
+  } else {
+    // Show auth overlay
+    document.getElementById('auth-overlay').style.display = 'flex';
+    document.getElementById('app-shell').style.display    = 'none';
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`Server running smoothly on port ${PORT}`);
+// Allow pressing Enter on login / register inputs
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Enter') return;
+  const loginActive = document.getElementById('auth-login')?.classList.contains('active');
+  const regActive   = document.getElementById('auth-register')?.classList.contains('active');
+  if (loginActive) handleLogin();
+  if (regActive)   handleRegister();
 });
+
+
+// ─── Contract address input handler ──────────────────────────────────────────
+function updateCustomContractAddress() {
+  const input = document.getElementById('custom-contract-address');
+  if (input) {
+    customContractAddress = input.value.trim();
+    fetchCandidates();
+    fetchResults();
+  }
+}
+
+// ─── Tab Switcher ─────────────────────────────────────────────────────────────
+function switchTab(tabId) {
+  document.querySelectorAll('.nav-link').forEach(l  => l.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+
+  const link = document.getElementById(`nav-${tabId}`);
+  const tab  = document.getElementById(`tab-${tabId}`);
+  if (link && tab) { link.classList.add('active'); tab.classList.add('active'); }
+
+  if (tabId === 'results') fetchResults();
+  if (tabId === 'vote')    { fetchCandidates(); checkVoterStatus(); }
+  if (tabId === 'admin')   { renderUsersTable(); renderAdminCandidates(); }
+
+  // Auto-close mobile menu if open
+  document.body.classList.remove('mobile-nav-active');
+  const icon = document.querySelector('.mobile-menu-btn i');
+  if (icon) icon.className = 'fa-solid fa-bars';
+}
+
+/** Toggle Mobile Menu Overlay (Responsive) */
+function toggleMobileMenu() {
+  const isActive = document.body.classList.toggle('mobile-nav-active');
+  const icon = document.querySelector('.mobile-menu-btn i');
+  if (icon) {
+    icon.className = isActive ? 'fa-solid fa-xmark' : 'fa-solid fa-bars';
+  }
+}
+
+/** Admin: Refresh candidates list in admin panel */
+function renderAdminCandidates() {
+  const el = document.getElementById('admin-candidates-list');
+  if (!el) return;
+
+  if (mockCandidates.length === 0) {
+    el.innerHTML = '<p class="desc" style="text-align:center;padding:1rem">No candidates registered.</p>';
+    return;
+  }
+
+  el.innerHTML = mockCandidates.map((c, idx) => `
+    <div class="admin-mini-card">
+      <div class="amc-avatar" style="${getAvatarStyle(idx)}">${c.name[0]}</div>
+      <div class="amc-info">
+        <div class="amc-name">${c.symbol || ''} ${c.name}</div>
+        <div class="amc-party">${c.party}</div>
+      </div>
+      <div class="amc-votes">${c.voteCount} votes</div>
+    </div>
+  `).join('');
+}
+
+// ─── Connect Wallet ───────────────────────────────────────────────────────────
+async function connectWallet() {
+  if (window.ethereum) {
+    try {
+      const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+      currentAccount = accounts[0];
+      const short = `${currentAccount.slice(0,6)}...${currentAccount.slice(-4)}`;
+      provider = new ethers.BrowserProvider(window.ethereum);
+      signer   = await provider.getSigner();
+      updatePanelWallet(short, true);
+      checkVoterStatus();
+      fetchCandidates();
+      showToast(`🔗 Wallet connected: ${short}`, 'success');
+    } catch (err) {
+      showToast('Could not connect MetaMask. Ensure it is unlocked.', 'error');
+    }
+  } else {
+    // Simulation / fallback mode — no MetaMask
+    currentAccount = '0x71C065161D21A3B18F95eB98C291533B038a834F';
+    const short = '0x71C0...834F';
+    updatePanelWallet(short, true);
+    checkVoterStatus();
+    fetchCandidates();
+    showToast('🔗 Simulation wallet connected: ' + short, 'info');
+  }
+}
+
+/** Silent auto-connect — uses already-authorised accounts (no MetaMask popup) */
+async function autoConnectWallet() {
+  if (!window.ethereum) return;
+  try {
+    const accounts = await window.ethereum.request({ method: 'eth_accounts' });
+    if (accounts.length > 0) {
+      currentAccount = accounts[0];
+      const short = `${currentAccount.slice(0,6)}...${currentAccount.slice(-4)}`;
+      provider = new ethers.BrowserProvider(window.ethereum);
+      signer   = await provider.getSigner();
+      updatePanelWallet(short, true);
+      checkVoterStatus();
+      fetchCandidates();
+      showToast(`🔗 Wallet auto-connected: ${short}`, 'success');
+    }
+  } catch (e) { console.warn('Auto-connect skipped:', e); }
+}
+
+/** Disconnect wallet (admin can turn off) */
+function disconnectWallet() {
+  currentAccount = null;
+  signer   = null;
+  provider = null;
+  updatePanelWallet('Not connected', false);
+  checkVoterStatus();
+  fetchCandidates();
+  showToast('🔌 Wallet disconnected.', 'info');
+}
+
+/** Update the wallet status display inside the Election Control panel */
+function updatePanelWallet(addressText, connected) {
+  const dot  = document.querySelector('#wallet-status-panel .wallet-dot');
+  const text = document.getElementById('wallet-panel-text');
+  const btnC = document.getElementById('btn-panel-connect');
+  const btnD = document.getElementById('btn-panel-disconnect');
+  if (dot)  dot.className   = connected ? 'wallet-dot connected-dot' : 'wallet-dot disconnected-dot';
+  if (text) { text.innerText = addressText; text.style.color = connected ? 'var(--green)' : 'var(--text-secondary)'; }
+  if (btnC) btnC.style.display = connected ? 'none'        : 'inline-flex';
+  if (btnD) btnD.style.display = connected ? 'inline-flex' : 'none';
+}
+
+
+// ─── Voter Status Card ────────────────────────────────────────────────────────
+function checkVoterStatus() {
+  const title = document.getElementById('voter-status-title');
+  const desc  = document.getElementById('voter-status-desc');
+  const btn   = document.getElementById('btn-self-register');
+
+  if (!currentAccount) {
+    title.innerText = 'Wallet Not Connected';
+    desc.innerText  = 'No wallet is currently connected. Please ask the administrator to connect the blockchain wallet, then try again.';
+    btn.style.display = 'none';
+    return;
+  }
+
+  const votedId = getVotedCandidateId();
+  if (votedId !== null) {
+    const cand = mockCandidates.find(c => c.id === votedId);
+    title.innerText = "✅ You Have Already Voted";
+    desc.innerText  = `Your vote has been permanently recorded${cand ? ` for ${cand.name}` : ''}. You cannot vote again.`;
+    btn.style.display = "none";
+
+    // Show an "already voted" visual banner in the vote tab
+    const banner = document.getElementById('voted-banner');
+    if (banner) banner.style.display = 'flex';
+    return;
+  }
+
+  const banner = document.getElementById('voted-banner');
+  if (banner) banner.style.display = 'none';
+
+  title.innerText = "✅ Wallet Connected — Ready to Vote";
+  desc.innerText  = `Address: ${currentAccount}. Cast your vote below — each wallet can vote only once.`;
+  btn.style.display = "none";
+}
+
+// ─── Register Voter (Admin API) ───────────────────────────────────────────────
+async function registerMeAsVoter() {
+  if (!currentAccount) { alert("Connect your wallet first."); return; }
+  try {
+    const res  = await fetch(`${BACKEND_URL}/api/register-voter`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ voterAddress: currentAccount })
+    });
+    const data = await res.json();
+    data.success ? alert("Registered on Blockchain!") : alert(`Error: ${data.error}`);
+  } catch {
+    alert("Backend unreachable. Running in simulation mode.");
+  }
+}
+
+// ─── Fetch & Render Candidates ────────────────────────────────────────────────
+async function fetchCandidates() {
+  // 1. Try direct smart contract read
+  if (customContractAddress && provider) {
+    try {
+      const contract = new ethers.Contract(customContractAddress, CONTRACT_ABI, provider);
+      const raw = await contract.getAllCandidates();
+      renderCandidateCards(raw.map(c => ({
+        id: Number(c.id), name: c.name, party: c.party, voteCount: Number(c.voteCount)
+      })));
+      return;
+    } catch(e) { console.error("Contract read failed:", e); }
+  }
+  // 2. Try backend
+  try {
+    const res  = await fetch(`${BACKEND_URL}/api/candidates`);
+    const data = await res.json();
+    if (data.success && data.candidates.length) { renderCandidateCards(data.candidates); return; }
+  } catch {}
+  // 3. Simulation — load persisted vote counts before rendering
+  loadVoteCounts();
+  renderCandidateCards(mockCandidates);
+}
+
+function renderCandidateCards(candidates) {
+  const container = document.getElementById('candidates-container');
+  container.innerHTML = '';
+
+  const isAdmin    = currentSession?.role === 'admin';
+  const totalVotes = candidates.reduce((s, c) => s + c.voteCount, 0);
+  const votedId    = isAdmin ? null : getVotedCandidateId();
+  const maxVotes   = Math.max(...candidates.map(c => c.voteCount), 1);
+  const leaderId   = candidates.reduce((a, c) => c.voteCount > (a ? a.voteCount : -1) ? c : a, null)?.id;
+
+
+  candidates.forEach((cand, idx) => {
+    const pct      = totalVotes > 0 ? Math.round((cand.voteCount / totalVotes) * 100) : 0;
+    const initials = cand.name.split(' ').map(w => w[0]).join('').substring(0,2).toUpperCase();
+    const symbol   = cand.symbol || '';
+    const isVoted  = !isAdmin && (votedId === cand.id);
+    const hasVoted = !isAdmin && (votedId !== null);
+    const isLeader = cand.id === leaderId && totalVotes > 0;
+
+    const card = document.createElement('div');
+    card.className = `glass-card candidate-card${isVoted ? ' card-voted' : ''}${isLeader ? ' card-leading' : ''}`;
+
+    card.innerHTML = `
+      ${isLeader && totalVotes > 0 ? '<div class="leading-badge"><i class="fa-solid fa-crown"></i> Leading</div>' : ''}
+      ${isVoted ? '<div class="voted-tag"><i class="fa-solid fa-circle-check"></i> Your Vote</div>' : ''}
+
+      <div class="cand-avatar-wrap">
+        <div class="cand-avatar" style="${getAvatarStyle(idx)}">${initials}</div>
+        ${symbol ? `<div class="party-symbol-badge">${symbol}</div>` : ''}
+      </div>
+
+      <div class="cand-info">
+        <span class="party-badge">${symbol ? symbol + ' ' : ''}${cand.party}</span>
+        <h4 class="cand-name">${cand.name}</h4>
+      </div>
+
+      <div class="cand-stats">
+        <div class="vote-progress-wrap">
+          <div class="vote-progress-bar" style="width:${Math.round((cand.voteCount/maxVotes)*100)}%"></div>
+        </div>
+        <div class="vote-meta">
+          <span class="vote-count-sm">${cand.voteCount} votes</span>
+          <span class="vote-pct">${pct}%</span>
+        </div>
+      </div>
+
+      ${isAdmin
+        ? `<div class="btn btn-admin-view btn-full" style="pointer-events:none">
+             <i class="fa-solid fa-eye"></i> View Only
+           </div>`
+        : `<button
+             class="btn ${isVoted ? 'btn-voted' : 'btn-primary'} btn-full vote-btn"
+             onclick="castVote(${cand.id})"
+             ${hasVoted || electionClosed ? 'disabled' : ''}
+             id="vote-btn-${cand.id}"
+           >
+             ${isVoted
+               ? '<i class="fa-solid fa-check-double"></i> Voted'
+               : electionClosed
+                 ? '<i class="fa-solid fa-lock"></i> Election Closed'
+                 : '<i class="fa-solid fa-square-check"></i> Vote for this Candidate'}
+           </button>`
+      }
+    `;
+    container.appendChild(card);
+  });
+}
+
+// ─── Cast Vote ────────────────────────────────────────────────────────────────
+async function castVote(candidateId) {
+  // Admin cannot vote
+  if (currentSession?.role === 'admin') {
+    showToast("🚫 Admins cannot vote. This is a view-only role.", "error");
+    return;
+  }
+
+  // Prevent double voting
+  const alreadyVoted = getVotedCandidateId();
+  if (alreadyVoted !== null) {
+    showToast("❌ You have already voted. Each account can only vote once.", "error");
+    return;
+  }
+
+  if (electionClosed) {
+    showToast("🔒 The election has been closed. No more votes accepted.", "error");
+    return;
+  }
+
+  // Show inline modal confirmation
+  const cand = mockCandidates.find(c => c.id === candidateId);
+  const candName = cand ? `${cand.symbol || ''} ${cand.name}` : `Candidate #${candidateId}`;
+  showConfirmModal(candName, () => executeVote(candidateId, cand));
+}
+
+// ─── Vote execution (after confirmation) ─────────────────────────────────────
+async function executeVote(candidateId, cand) {
+  // Direct blockchain
+  if (customContractAddress && signer) {
+    try {
+      const contract = new ethers.Contract(customContractAddress, CONTRACT_ABI, signer);
+      const tx = await contract.vote(candidateId);
+      showToast(`📡 Transaction submitted. Hash: ${tx.hash.slice(0,12)}...`, "info");
+      await tx.wait();
+      
+      // Also notify backend to update MongoDB
+      await fetch(`${BACKEND_URL}/api/vote`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: currentSession.email, candidateId })
+      });
+
+      showToast("✅ Vote recorded on the Ethereum blockchain!", "success");
+      fetchCandidates();
+      fetchResults();
+      checkVoterStatus();
+      return;
+    } catch (err) {
+      showToast(`Contract error: ${err.reason || err.message}`, "error");
+      return;
+    }
+  }
+
+  // Simulation mode (MongoDB only)
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/vote`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: currentSession.email, candidateId })
+    });
+    const data = await res.json();
+
+    if (data.success) {
+      showToast(`✅ Vote for "${cand ? cand.name : 'Candidate'}" recorded successfully in MongoDB!`, "success");
+      fetchCandidates();
+      fetchResults();
+      checkVoterStatus();
+    } else {
+      showToast(`❌ ${data.error}`, 'error');
+    }
+  } catch (error) {
+    showToast('❌ Backend unreachable.', 'error');
+  }
+}
+
+// ─── Inline Confirm Modal (replaces browser confirm) ─────────────────────────
+function showConfirmModal(candidateName, onConfirm) {
+  // Remove any existing modal
+  const existing = document.getElementById('confirm-modal');
+  if (existing) existing.remove();
+
+  const modal = document.createElement('div');
+  modal.id = 'confirm-modal';
+  modal.className = 'confirm-modal-overlay';
+  modal.innerHTML = `
+    <div class="confirm-modal-box glass-card">
+      <div class="confirm-modal-icon"><i class="fa-solid fa-shield-check"></i></div>
+      <h3>Confirm Your Vote</h3>
+      <p>You are about to cast your vote for:</p>
+      <div class="confirm-candidate-name">${candidateName}</div>
+      <p class="confirm-warning">⚠️ This action is permanent and cannot be undone. Each wallet may only vote once.</p>
+      <div class="confirm-actions">
+        <button class="btn btn-outline" onclick="document.getElementById('confirm-modal').remove()">
+          <i class="fa-solid fa-xmark"></i> Cancel
+        </button>
+        <button class="btn btn-primary" id="btn-confirm-vote">
+          <i class="fa-solid fa-square-check"></i> Confirm Vote
+        </button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+
+  document.getElementById('btn-confirm-vote').addEventListener('click', () => {
+    modal.remove();
+    onConfirm();
+  });
+
+  // Close on backdrop click
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+}
+
+// ─── Fetch Results & Render Dashboard ────────────────────────────────────────
+async function fetchResults() {
+  let candidates  = [...mockCandidates];
+  let totalVoters = 0;
+
+  if (customContractAddress && provider) {
+    try {
+      const contract = new ethers.Contract(customContractAddress, CONTRACT_ABI, provider);
+      const raw = await contract.getAllCandidates();
+      candidates  = raw.map(c => ({ id:Number(c.id), name:c.name, party:c.party, voteCount:Number(c.voteCount) }));
+      totalVoters = candidates.reduce((s,c) => s + c.voteCount, 0) + 5;
+    } catch(e) { console.error("Contract results error:", e); }
+  } else {
+    try {
+      const res  = await fetch(`${BACKEND_URL}/api/results`);
+      const data = await res.json();
+      if (data.success) {
+        candidates  = data.candidates;
+        totalVoters = data.votersCount;
+      }
+    } catch {}
+  }
+
+  // In simulation, always read latest persisted vote counts
+  if (!customContractAddress) {
+    loadVoteCounts();
+    candidates = [...mockCandidates];
+  }
+
+  const totalVotes = candidates.reduce((s,c) => s + c.voteCount, 0);
+
+  // Update stat cards
+  document.getElementById('stat-voters').innerText = totalVoters || candidates.length;
+  document.getElementById('stat-votes').innerText  = totalVotes;
+
+  // Render leaderboard table below chart
+  renderLeaderboard(candidates, totalVotes);
+
+  // Render chart
+  renderResultsChart(candidates);
+
+  // Announce winner if election is closed or votes > 0
+  if (electionClosed || totalVotes > 0) announceWinner(candidates);
+}
+
+// ─── Winner Announcement ──────────────────────────────────────────────────────
+function announceWinner(candidates) {
+  const box = document.getElementById('winner-box');
+  if (!box || candidates.length === 0) return;
+
+  const totalVotes = candidates.reduce((s,c) => s + c.voteCount, 0);
+  if (totalVotes === 0) { box.style.display = 'none'; return; }
+
+  const sorted = [...candidates].sort((a,b) => b.voteCount - a.voteCount);
+  const winner = sorted[0];
+  const pct    = Math.round((winner.voteCount / totalVotes) * 100);
+  const tied   = sorted.filter(c => c.voteCount === winner.voteCount).length > 1;
+
+  box.style.display = 'flex';
+
+  if (tied) {
+    box.innerHTML = `
+      <div class="winner-icon"><i class="fa-solid fa-scale-balanced"></i></div>
+      <div class="winner-text">
+        <span class="winner-label">Currently Tied</span>
+        <h2 class="winner-name">No clear leader yet</h2>
+        <p class="winner-desc">Multiple candidates share the top spot. More votes may break the tie.</p>
+      </div>`;
+  } else {
+    box.innerHTML = `
+      <div class="winner-icon winner-gold"><i class="fa-solid fa-crown"></i></div>
+      <div class="winner-text">
+        <span class="winner-label">${electionClosed ? '🏆 Election Winner' : '📊 Current Leader'}</span>
+        <h2 class="winner-name">${winner.name}</h2>
+        <p class="winner-desc">${winner.party} · <strong>${winner.voteCount} votes</strong> · ${pct}% of total</p>
+      </div>`;
+  }
+}
+
+// ─── Leaderboard Table ────────────────────────────────────────────────────────
+function renderLeaderboard(candidates, totalVotes) {
+  const el = document.getElementById('leaderboard');
+  if (!el) return;
+
+  const sorted = [...candidates].sort((a,b) => b.voteCount - a.voteCount);
+
+  el.innerHTML = `
+    <table class="lb-table">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Candidate</th>
+          <th>Party</th>
+          <th>Votes</th>
+          <th>Share</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${sorted.map((c, i) => {
+          const pct = totalVotes > 0 ? Math.round((c.voteCount / totalVotes)*100) : 0;
+          const medal = i===0 ? '🥇' : i===1 ? '🥈' : i===2 ? '🥉' : `${i+1}`;
+          const isWinner = i === 0 && totalVotes > 0;
+          return `<tr class="${isWinner ? 'lb-winner-row' : ''}">
+            <td class="lb-rank">${medal}</td>
+            <td class="lb-name">${c.name}</td>
+            <td class="lb-party">${c.party}</td>
+            <td class="lb-votes">${c.voteCount}</td>
+            <td>
+              <div class="lb-bar-wrap">
+                <div class="lb-bar" style="width:${pct}%"></div>
+                <span class="lb-pct">${pct}%</span>
+              </div>
+            </td>
+            <td>${isWinner ? '<span class="badge-win">Leading</span>' : '<span class="badge-loss">Behind</span>'}</td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table>`;
+}
+
+// ─── Chart.js Results Chart ───────────────────────────────────────────────────
+function renderResultsChart(candidates) {
+  const ctx = document.getElementById('electionChart').getContext('2d');
+  if (resultsChart) resultsChart.destroy();
+
+  const sorted = [...candidates].sort((a,b) => b.voteCount - a.voteCount);
+
+  resultsChart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: sorted.map(c => c.name),
+      datasets: [{
+        label: 'Votes Received',
+        data: sorted.map(c => c.voteCount),
+        backgroundColor: sorted.map((_,i) =>
+          i===0 ? 'rgba(94,92,230,0.75)' : i===1 ? 'rgba(22,163,74,0.6)' : 'rgba(124,58,237,0.55)'
+        ),
+        borderColor: sorted.map((_,i) =>
+          i===0 ? '#5e5ce6' : i===1 ? '#16a34a' : '#7c3aed'
+        ),
+        borderWidth: 2,
+        borderRadius: 10
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { labels: { color:'#1a1d2e', font:{ family:'Outfit', size:12, weight:600 } } },
+        tooltip: {
+          callbacks: {
+            label: ctx => {
+              const total = ctx.dataset.data.reduce((a,b)=>a+b,0);
+              const pct = total > 0 ? Math.round(ctx.parsed.y/total*100) : 0;
+              return ` ${ctx.parsed.y} votes (${pct}%)`;
+            }
+          }
+        }
+      },
+      scales: {
+        x: { grid:{ color:'rgba(94,92,230,0.06)' }, ticks:{ color:'#6b7280', font:{family:'Outfit'} } },
+        y: { grid:{ color:'rgba(94,92,230,0.06)' }, ticks:{ color:'#6b7280', font:{family:'Outfit'}, stepSize:1 }, beginAtZero:true }
+      }
+    }
+  });
+}
+
+// ─── Toast Notification ───────────────────────────────────────────────────────
+function showToast(msg, type='info') {
+  const container = document.getElementById('toast-container');
+  if (!container) { alert(msg); return; }
+  const toast = document.createElement('div');
+  toast.className = `toast toast-${type}`;
+  toast.innerHTML = msg;
+  container.appendChild(toast);
+  setTimeout(() => toast.classList.add('toast-show'), 10);
+  setTimeout(() => {
+    toast.classList.remove('toast-show');
+    setTimeout(() => toast.remove(), 400);
+  }, 4000);
+}
+
+// ─── Admin: Register Candidate ────────────────────────────────────────────────
+async function handleRegisterCandidate(event) {
+  event.preventDefault();
+  const name   = document.getElementById('cand-name').value.trim();
+  const party  = document.getElementById('cand-party').value.trim();
+  const symbol = document.getElementById('cand-symbol').value.trim();
+
+  try {
+    const res  = await fetch(`${BACKEND_URL}/api/register-candidate`,{
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ name, party, symbol })
+    });
+    const data = await res.json();
+    if (data.success) {
+      showToast(`Candidate "${name}" added on blockchain!`, 'success');
+      document.getElementById('form-register-candidate').reset();
+      clearSymbolSelection();
+      fetchCandidates(); fetchResults();
+    } else { showToast(`Error: ${data.error}`, 'error'); }
+  } catch {
+    const newId = mockCandidates.length > 0 ? Math.max(...mockCandidates.map(c => c.id)) + 1 : 1;
+    mockCandidates.push({ id: newId, name, party, symbol, voteCount: 0 });
+    saveData(); // Persist newly added candidate
+    showToast(`${symbol} "${name}" (${party}) added!`, 'success');
+    document.getElementById('form-register-candidate').reset();
+    clearSymbolSelection();
+    renderAdminCandidates(); // Update admin list immediately
+    fetchCandidates(); fetchResults();
+  }
+}
+
+/** Pick a party symbol from the quick-select buttons */
+function pickSymbol(emoji, btn) {
+  document.getElementById('cand-symbol').value = emoji;
+  document.querySelectorAll('.symbol-pick-btn').forEach(b => b.classList.remove('picked'));
+  btn.classList.add('picked');
+}
+
+/** Reset symbol selection state */
+function clearSymbolSelection() {
+  document.querySelectorAll('.symbol-pick-btn').forEach(b => b.classList.remove('picked'));
+  const si = document.getElementById('cand-symbol');
+  if (si) si.value = '';
+}
+
+// ─── Admin: Register Voter ────────────────────────────────────────────────────
+async function handleRegisterVoter(event) {
+  event.preventDefault();
+  const address = document.getElementById('voter-address').value.trim();
+
+  try {
+    const res  = await fetch(`${BACKEND_URL}/api/register-voter`,{
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ voterAddress: address })
+    });
+    const data = await res.json();
+    data.success
+      ? showToast(`Voter ${address.slice(0,8)}... authorized!`, 'success')
+      : showToast(`Error: ${data.error}`, 'error');
+  } catch {
+    showToast(`Voter ${address.slice(0,8)}... added to simulation whitelist.`, 'success');
+  }
+  document.getElementById('form-register-voter').reset();
+}
+
+// ─── Admin: Toggle Election Status ───────────────────────────────────────────
+function toggleElection() {
+  electionClosed = !electionClosed;
+
+  // Update toggle button
+  const btn = document.getElementById('btn-toggle-election');
+  if (btn) {
+    btn.innerHTML = electionClosed
+      ? '<i class="fa-solid fa-play"></i> Reopen Election'
+      : '<i class="fa-solid fa-stop"></i> Close Election';
+    btn.className = electionClosed ? 'btn btn-primary' : 'btn btn-danger';
+  }
+
+  // Update results tab status text
+  const statStatus = document.getElementById('stat-status');
+  if (statStatus) {
+    statStatus.innerText  = electionClosed ? 'Closed' : 'Active';
+    statStatus.className  = electionClosed ? 'stat-value text-red' : 'stat-value text-green';
+  }
+
+  // Update election status indicator in admin panel
+  const indicator = document.getElementById('election-indicator');
+  const statusTxt = document.getElementById('election-status-text');
+  if (indicator && statusTxt) {
+    const dot = indicator.querySelector('.indicator-dot');
+    if (dot) {
+      dot.className = electionClosed ? 'indicator-dot closed-dot' : 'indicator-dot active-dot';
+    }
+    statusTxt.innerHTML = electionClosed
+      ? 'Election is <strong style="color:var(--red)">Closed</strong>'
+      : 'Election is <strong style="color:var(--green)">Active</strong>';
+  }
+  // Update description text inside the panel
+  const descEl = indicator?.closest('.election-status-display')?.querySelector('.desc');
+  if (descEl) {
+    descEl.innerText = electionClosed
+      ? 'Voting is currently locked. No new votes will be accepted.'
+      : 'Voters can currently cast their votes on the blockchain.';
+  }
+
+  showToast(electionClosed ? '🔒 Election has been closed.' : '🟢 Election is now open.', electionClosed ? 'warn' : 'success');
+  fetchCandidates();
+  fetchResults();
+}
+
+// ─── Admin: Switch Feature Panel ─────────────────────────────────────────────
+function switchAdminPanel(panelId) {
+  const PANELS = ['election', 'candidate', 'voter', 'users', 'password'];
+
+  // Hide all panels
+  PANELS.forEach(id => {
+    const panel = document.getElementById(`panel-${id}`);
+    if (panel) panel.style.display = 'none';
+  });
+
+  // Deactivate all sidebar buttons
+  document.querySelectorAll('.admin-nav-btn').forEach(btn => btn.classList.remove('active'));
+
+  // Show selected panel
+  const target = document.getElementById(`panel-${panelId}`);
+  if (target) {
+    target.style.display = 'block';
+    target.style.animation = 'fade-in .28s ease';
+  }
+
+  // Activate selected sidebar button
+  const activeBtn = document.getElementById(`anb-${panelId}`);
+  if (activeBtn) activeBtn.classList.add('active');
+
+  // Refresh users/candidates table when that panel opens
+  if (panelId === 'users')     renderUsersTable();
+  if (panelId === 'candidate') renderAdminCandidates();
+}
+
