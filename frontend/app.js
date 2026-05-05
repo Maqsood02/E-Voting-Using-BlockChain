@@ -5,7 +5,11 @@
 // ════════════════════════════════════════════════════════════════
 
 // ─── Configuration ───────────────────────────────────────────────────────────
-const BACKEND_URL = ''; // Empty for relative paths (works on Vercel)
+// ─── Configuration ───────────────────────────────────────────────────────────
+// Detect if running locally or on Vercel
+const BACKEND_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' 
+  ? 'http://localhost:5000' 
+  : ''; 
 
 // ─── Auth Storage Keys ────────────────────────────────────────────────────────
 const KEY_USERS      = 'votify_users';      // array of voter accounts
