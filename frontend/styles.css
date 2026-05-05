@@ -137,23 +137,146 @@
 .nav-right {
   display: flex; align-items: center; gap: .75rem;
 }
+
 .user-pill {
-  display: flex; align-items: center; gap: .6rem;
-  background: rgba(94,92,230,.07); border: 1px solid rgba(94,92,230,.18);
-  border-radius: 50px; padding: .3rem .75rem .3rem .3rem;
+  display: flex;
+  align-items: center;
+  gap: .65rem;
+  background: rgba(255, 255, 255, 0.6);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(94, 92, 230, 0.2);
+  border-radius: 50px;
+  padding: .35rem 1rem .35rem .35rem;
+  box-shadow: 0 4px 20px rgba(94, 92, 230, 0.1), inset 0 1px 0 rgba(255,255,255,0.8);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: hidden;
 }
-.user-pill-avatar {
-  width: 28px; height: 28px; border-radius: 50%;
-  background: var(--accent); color: #fff;
-  font-size: .72rem; font-weight: 800;
+
+.user-pill::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(94,92,230,0.05) 0%, rgba(162,89,255,0.05) 100%);
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+
+.user-pill:hover {
+  border-color: rgba(94, 92, 230, 0.4);
+  box-shadow: 0 8px 32px rgba(94, 92, 230, 0.18), inset 0 1px 0 rgba(255,255,255,0.9);
+  transform: translateY(-1px);
+}
+
+.user-pill:hover::before { opacity: 1; }
+
+/* ── Avatar Circle ── */
+#user-pill-avatar {
+  width: 34px; height: 34px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #5e5ce6 0%, #a259ff 100%);
+  color: #fff;
+  font-size: .75rem;
+  font-weight: 800;
+  letter-spacing: 0.5px;
   display: flex; align-items: center; justify-content: center;
   flex-shrink: 0;
+  box-shadow: 0 4px 14px rgba(94, 92, 230, 0.45), 0 0 0 2px rgba(255,255,255,0.8);
+  position: relative;
+  transition: all 0.3s ease;
 }
+
+#user-pill-avatar::after {
+  content: '';
+  position: absolute;
+  inset: -3px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #5e5ce6, #a259ff, #ff6b6b);
+  z-index: -1;
+  opacity: 0;
+  transition: opacity 0.3s;
+  animation: avatar-spin 3s linear infinite;
+}
+
+.user-pill:hover #user-pill-avatar::after { opacity: 0.5; }
+
+@keyframes avatar-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+/* ── User Info Block ── */
+.user-pill-info {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
 #user-pill-name {
-  font-size: .85rem; font-weight: 600; max-width: 100px;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: .85rem;
+  font-weight: 700;
+  max-width: 110px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: var(--text-primary);
+  letter-spacing: -0.1px;
+  line-height: 1.2;
 }
+
+.user-pill-role {
+  font-size: .68rem;
+  font-weight: 600;
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  line-height: 1;
+}
+
+/* ── Divider ── */
+.pill-divider {
+  width: 1px;
+  height: 20px;
+  background: rgba(94, 92, 230, 0.2);
+  flex-shrink: 0;
+}
+
+/* ── Logout Button ── */
+.logout-btn {
+  background: none;
+  border: none;
+  width: 30px; height: 30px;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: .88rem;
+  transition: all 0.25s ease;
+  flex-shrink: 0;
+  position: relative;
+}
+
+.logout-btn::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: rgba(239, 68, 68, 0);
+  transition: background 0.25s ease;
+}
+
+.logout-btn:hover {
+  color: #ef4444;
+  transform: rotate(10deg) scale(1.15);
+}
+
+.logout-btn:hover::before {
+  background: rgba(239, 68, 68, 0.12);
+}
+
+.logout-btn:active { transform: scale(0.9); }
 
 /* ═══════════════════════════════════════════════════════════════
    Votify — Premium Light White Design System
