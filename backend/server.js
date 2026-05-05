@@ -17,6 +17,7 @@ const connectDB = async () => {
     isConnected = true;
     console.log('Connected to MongoDB successfully');
     await seedAdmin();
+    await seedCandidates();
   } catch (err) {
     console.error('MongoDB connection error:', err);
     throw err;
@@ -48,6 +49,23 @@ async function seedAdmin() {
     }
   } catch (err) {
     console.warn('Admin seeding skipped or failed.');
+  }
+}
+
+async function seedCandidates() {
+  try {
+    const count = await Candidate.countDocuments();
+    if (count === 0) {
+      const initialCandidates = [
+        { candidateId: 1, name: "Narendra Singh", party: "Bharatiya Janata Party", symbol: "🪷", voteCount: 0 },
+        { candidateId: 2, name: "Rahul Verma", party: "Indian National Congress", symbol: "✋", voteCount: 0 },
+        { candidateId: 3, name: "Arvind Sharma", party: "Aam Aadmi Party", symbol: "🧹", voteCount: 0 }
+      ];
+      await Candidate.insertMany(initialCandidates);
+      console.log('✅ Initial candidates seeded to MongoDB');
+    }
+  } catch (err) {
+    console.warn('Candidates seeding failed:', err);
   }
 }
 
