@@ -157,7 +157,7 @@ function setAuthError(id, msg) {
 }
 
 /** Handle login submission */
-function handleLogin() {
+async function handleLogin() {
   const email    = document.getElementById('login-email').value.trim().toLowerCase();
   const password = document.getElementById('login-password').value;
 
@@ -166,26 +166,26 @@ function handleLogin() {
     return;
   }
 
-  // Check admin credentials
-  const admin = JSON.parse(localStorage.getItem(KEY_ADMIN));
-  if (email === admin.email.toLowerCase() && password === admin.password) {
-    startSession({ name: admin.name, email: admin.email, role: 'admin' });
-    return;
-  }
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password })
+    });
+    const data = await res.json();
 
-  // Check voter accounts
-  const users = JSON.parse(localStorage.getItem(KEY_USERS));
-  const user  = users.find(u => u.email.toLowerCase() === email && u.password === password);
-  if (user) {
-    startSession({ name: user.name, email: user.email, role: 'voter' });
-    return;
+    if (data.success) {
+      startSession(data.user);
+    } else {
+      setAuthError('login-error', `❌ ${data.error || 'Invalid credentials'}`);
+    }
+  } catch (error) {
+    setAuthError('login-error', '❌ Backend unreachable. Please try again later.');
   }
-
-  setAuthError('login-error', '❌ Invalid email or password. Please try again.');
 }
 
 /** Handle voter registration */
-function handleRegister() {
+async function handleRegister() {
   const name     = document.getElementById('reg-name').value.trim();
   const email    = document.getElementById('reg-email').value.trim().toLowerCase();
   const password = document.getElementById('reg-password').value;
@@ -197,25 +197,23 @@ function handleRegister() {
     setAuthError('reg-error', '⚠️ Password must be at least 6 characters.'); return;
   }
 
-  const users = JSON.parse(localStorage.getItem(KEY_USERS));
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, email, password, role: 'voter' })
+    });
+    const data = await res.json();
 
-  // Prevent duplicate email
-  if (users.find(u => u.email.toLowerCase() === email)) {
-    setAuthError('reg-error', '❌ An account with this email already exists.'); return;
+    if (data.success) {
+      showToast(`✅ Welcome, ${name}! Your account has been created.`, 'success');
+      startSession(data.user);
+    } else {
+      setAuthError('reg-error', `❌ ${data.error || 'Registration failed'}`);
+    }
+  } catch (error) {
+    setAuthError('reg-error', '❌ Backend unreachable.');
   }
-
-  // Block admin email for voter registration
-  const admin = JSON.parse(localStorage.getItem(KEY_ADMIN));
-  if (email === admin.email.toLowerCase()) {
-    setAuthError('reg-error', '❌ That email is reserved for the administrator.'); return;
-  }
-
-  users.push({ name, email, password, role: 'voter' });
-  localStorage.setItem(KEY_USERS, JSON.stringify(users));
-
-  // Auto-login after registration
-  startSession({ name, email, role: 'voter' });
-  showToast(`✅ Welcome, ${name}! Your account has been created.`, 'success');
 }
 
 /** Start a session (save to localStorage, update UI) */
@@ -287,19 +285,13 @@ function handleLogout() {
 }
 
 /** Handle admin password change */
-function handleChangePassword(event) {
+async function handleChangePassword(event) {
   event.preventDefault();
   const current  = document.getElementById('cp-current').value;
   const newPass  = document.getElementById('cp-new').value;
   const confirm  = document.getElementById('cp-confirm').value;
   const errEl    = document.getElementById('cp-error');
 
-  const admin = JSON.parse(localStorage.getItem(KEY_ADMIN));
-
-  if (current !== admin.password) {
-    errEl.innerText = '❌ Current password is incorrect.';
-    errEl.style.display = 'flex'; return;
-  }
   if (newPass.length < 6) {
     errEl.innerText = '⚠️ New password must be at least 6 characters.';
     errEl.style.display = 'flex'; return;
@@ -309,41 +301,65 @@ function handleChangePassword(event) {
     errEl.style.display = 'flex'; return;
   }
 
-  admin.password = newPass;
-  localStorage.setItem(KEY_ADMIN, JSON.stringify(admin));
-  errEl.style.display = 'none';
-  document.getElementById('form-change-password').reset();
-  showToast('✅ Admin password updated successfully!', 'success');
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/change-password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ 
+        email: currentSession.email, 
+        currentPassword: current, 
+        newPassword: newPass 
+      })
+    });
+    const data = await res.json();
+
+    if (data.success) {
+      errEl.style.display = 'none';
+      document.getElementById('form-change-password').reset();
+      showToast('✅ Password updated successfully!', 'success');
+    } else {
+      errEl.innerText = `❌ ${data.error}`;
+      errEl.style.display = 'flex';
+    }
+  } catch (error) {
+    showToast('❌ Backend unreachable.', 'error');
+  }
 }
 
 /** Admin: show registered voter accounts table */
-function renderUsersTable() {
-  const el    = document.getElementById('users-table');
+async function renderUsersTable() {
+  const el = document.getElementById('users-table');
   if (!el) return;
-  const users = JSON.parse(localStorage.getItem(KEY_USERS) || '[]');
 
-  if (users.length === 0) {
-    el.innerHTML = '<p class="desc" style="text-align:center;padding:1rem">No voter accounts registered yet.</p>';
-    return;
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/users`);
+    const data = await res.json();
+
+    if (!data.success || data.users.length === 0) {
+      el.innerHTML = '<p class="desc" style="text-align:center;padding:1rem">No voter accounts registered yet.</p>';
+      return;
+    }
+
+    el.innerHTML = `
+      <table class="lb-table">
+        <thead>
+          <tr><th>#</th><th>Name</th><th>Email</th><th>Role</th><th>Has Voted</th></tr>
+        </thead>
+        <tbody>
+          ${data.users.map((u, i) => `
+            <tr>
+              <td>${i + 1}</td>
+              <td><strong>${u.name}</strong></td>
+              <td>${u.email}</td>
+              <td><span class="badge">${u.role}</span></td>
+              <td>${u.hasVoted ? '<span class="badge-win">✅ Yes</span>' : '<span class="badge-loss">No</span>'}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>`;
+  } catch (error) {
+    el.innerHTML = '<p class="desc" style="color:var(--red);text-align:center">Error loading users.</p>';
   }
-
-  el.innerHTML = `
-    <table class="lb-table">
-      <thead>
-        <tr><th>#</th><th>Name</th><th>Email</th><th>Has Voted</th></tr>
-      </thead>
-      <tbody>
-        ${users.map((u, i) => {
-          const voted = localStorage.getItem(`voted_${u.email.toLowerCase()}`);
-          return `<tr>
-            <td>${i + 1}</td>
-            <td><strong>${u.name}</strong></td>
-            <td>${u.email}</td>
-            <td>${voted ? '<span class="badge-win">✅ Yes</span>' : '<span class="badge-loss">No</span>'}</td>
-          </tr>`;
-        }).join('')}
-      </tbody>
-    </table>`;
 }
 
 /** Toggle password eye icon */
@@ -709,7 +725,14 @@ async function executeVote(candidateId, cand) {
       const tx = await contract.vote(candidateId);
       showToast(`📡 Transaction submitted. Hash: ${tx.hash.slice(0,12)}...`, "info");
       await tx.wait();
-      recordVoteLocally(candidateId);
+      
+      // Also notify backend to update MongoDB
+      await fetch(`${BACKEND_URL}/api/vote`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: currentSession.email, candidateId })
+      });
+
       showToast("✅ Vote recorded on the Ethereum blockchain!", "success");
       fetchCandidates();
       fetchResults();
@@ -721,16 +744,26 @@ async function executeVote(candidateId, cand) {
     }
   }
 
-  // Simulation mode
-  recordVoteLocally(candidateId);
-  if (cand) {
-    cand.voteCount++;
-    saveVoteCounts();   // persist to localStorage
+  // Simulation mode (MongoDB only)
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/vote`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: currentSession.email, candidateId })
+    });
+    const data = await res.json();
+
+    if (data.success) {
+      showToast(`✅ Vote for "${cand ? cand.name : 'Candidate'}" recorded successfully in MongoDB!`, "success");
+      fetchCandidates();
+      fetchResults();
+      checkVoterStatus();
+    } else {
+      showToast(`❌ ${data.error}`, 'error');
+    }
+  } catch (error) {
+    showToast('❌ Backend unreachable.', 'error');
   }
-  showToast(`✅ Vote for "${cand ? cand.name : 'Candidate'}" recorded successfully!`, "success");
-  fetchCandidates();
-  fetchResults();
-  checkVoterStatus();
 }
 
 // ─── Inline Confirm Modal (replaces browser confirm) ─────────────────────────
