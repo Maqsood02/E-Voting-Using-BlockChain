@@ -6,7 +6,7 @@ require('dotenv').config();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/votify';
+const MONGODB_URI = (process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/votify').trim();
 
 // MongoDB Connection & Seeding
 mongoose.connect(MONGODB_URI)
