@@ -284,6 +284,11 @@ app.post('/api/vote', async (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`Server running smoothly on port ${PORT}`);
-});
+// Export the app for Vercel
+module.exports = app;
+
+if (require.main === module) {
+  app.listen(PORT, () => {
+    console.log(`Server running smoothly on port ${PORT}`);
+  });
+}
