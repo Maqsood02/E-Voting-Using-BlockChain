@@ -117,10 +117,14 @@
         </nav>
         <div class="nav-right">
           <div class="user-pill" id="user-pill" style="display:none">
-            <div class="user-avatar" id="user-pill-avatar">A</div>
-            <span id="user-pill-name">Admin</span>
+            <div id="user-pill-avatar">A</div>
+            <div class="user-pill-info">
+              <span id="user-pill-name">Admin</span>
+              <span class="user-pill-role" id="user-pill-role">Voter</span>
+            </div>
+            <div class="pill-divider"></div>
             <button class="logout-btn" onclick="handleLogout()" title="Sign Out">
-              <i class="fa-solid fa-right-from-bracket"></i>
+              <i class="fa-solid fa-arrow-right-from-bracket"></i>
             </button>
           </div>
           <button class="btn btn-outline-sm mobile-menu-btn" onclick="toggleMobileMenu()" style="display:none; padding:.5rem .75rem; min-width:unset">
