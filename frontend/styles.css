@@ -1388,3 +1388,18 @@ body {
   align-items: center;
   gap: 0.75rem;
 }
+
+/* ── Main Layout ─────────────────────────────────────────────── */
+.container {
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 100px 1.5rem 3rem;
+  position: relative;
+  z-index: 1;
+}
+
+@media (max-width: 768px) {
+  .container {
+    padding: 90px 1rem 2rem;
+  }
+}
