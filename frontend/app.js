@@ -638,6 +638,7 @@ async function fetchCandidates() {
         ...c,
         id: c.candidateId || c.id
       }));
+      mockCandidates = mapped; // Sync local state
       renderCandidateCards(mapped); 
       return; 
     }
@@ -872,6 +873,9 @@ async function fetchResults() {
 
   // Announce winner if election is closed or votes > 0
   if (electionClosed || totalVotes > 0) announceWinner(candidates);
+
+  // Update admin view if active
+  renderAdminCandidates();
 }
 
 // ─── Winner Announcement ──────────────────────────────────────────────────────
@@ -1081,7 +1085,9 @@ async function handleRegisterCandidate(event) {
       showToast(`Candidate "${name}" added on blockchain!`, 'success');
       document.getElementById('form-register-candidate').reset();
       clearSymbolSelection();
-      fetchCandidates(); fetchResults();
+      await fetchCandidates(); 
+      await fetchResults();
+      renderAdminCandidates(); // Update the sidebar list
     } else { showToast(`Error: ${data.error}`, 'error'); }
   } catch {
     const newId = mockCandidates.length > 0 ? Math.max(...mockCandidates.map(c => c.id)) + 1 : 1;
