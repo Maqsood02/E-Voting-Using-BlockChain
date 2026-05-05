@@ -110,9 +110,10 @@
           <span>Votify<span class="text-accent">.</span></span>
         </div>
         <nav class="nav-links">
-          <a href="#" class="nav-link active" onclick="switchTab('landing')" id="nav-landing">Home</a>
+          <a href="#" class="nav-link" onclick="switchTab('landing')" id="nav-landing">Home</a>
           <a href="#" class="nav-link" onclick="switchTab('vote')"    id="nav-vote">Vote</a>
           <a href="#" class="nav-link" onclick="switchTab('results')" id="nav-results">Dashboard</a>
+          <a href="#" class="nav-link" onclick="switchTab('winner')"  id="nav-winner">Winner</a>
           <a href="#" class="nav-link" id="nav-admin" onclick="switchTab('admin')" style="display:none">Admin</a>
         </nav>
         <div class="nav-right">
@@ -269,7 +270,24 @@
         </div>
       </section>
 
-      <!-- ══ TAB 4: ADMIN ══ -->
+      <!-- ══ TAB 4: WINNER ══ -->
+      <section id="tab-winner" class="tab-content">
+        <div class="tab-header">
+          <span class="badge">Election Outcome</span>
+          <h2>Official Results</h2>
+          <p class="section-desc">The final results and official winner announcement based on verified blockchain data.</p>
+        </div>
+        <div id="winner-announcement-container">
+          <!-- Dynamically filled -->
+          <div class="glass-card text-center py-5">
+            <i class="fa-solid fa-hourglass-half fa-3x text-accent mb-4 animate-pulse"></i>
+            <h3>Waiting for Results</h3>
+            <p class="desc">Results will be announced here once the election is concluded.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ══ TAB 5: ADMIN ══ -->
       <section id="tab-admin" class="tab-content">
         <div class="tab-header">
           <span class="badge">Authority Center</span>
