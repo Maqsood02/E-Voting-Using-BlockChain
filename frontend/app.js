@@ -442,7 +442,7 @@ async function switchTab(tabId) {
   const tab  = document.getElementById(`tab-${tabId}`);
   if (link && tab) { link.classList.add('active'); tab.classList.add('active'); }
 
-  if (tabId === 'results') await fetchResults();
+  if (tabId === 'results' || tabId === 'winner') await fetchResults();
   if (tabId === 'vote')    { await fetchCandidates(); await checkVoterStatus(); }
   if (tabId === 'admin')   { renderUsersTable(); renderAdminCandidates(); }
 
@@ -889,22 +889,74 @@ function announceWinner(candidates) {
 
   box.style.display = 'flex';
 
+  const announceContainer = document.getElementById('winner-announcement-container');
+
   if (tied) {
-    box.innerHTML = `
+    const html = `
       <div class="winner-icon"><i class="fa-solid fa-scale-balanced"></i></div>
       <div class="winner-text">
         <span class="winner-label">Currently Tied</span>
         <h2 class="winner-name">No clear leader yet</h2>
         <p class="winner-desc">Multiple candidates share the top spot. More votes may break the tie.</p>
       </div>`;
+    box.innerHTML = html;
+    if (announceContainer) {
+        announceContainer.innerHTML = `
+          <div class="glass-card text-center py-5">
+            <div class="winner-icon mx-auto mb-4" style="font-size:3rem;background:rgba(162,89,255,0.1);color:var(--purple);width:80px;height:80px;display:flex;align-items:center;justify-content:center;border-radius:50%">
+                <i class="fa-solid fa-scale-balanced"></i>
+            </div>
+            <h3>Election is Tied</h3>
+            <p class="desc">No single candidate has secured the majority yet.</p>
+            <button class="btn btn-primary mt-4" onclick="switchTab('results')">View Full Dashboard</button>
+          </div>`;
+    }
   } else {
-    box.innerHTML = `
+    const html = `
       <div class="winner-icon winner-gold"><i class="fa-solid fa-crown"></i></div>
       <div class="winner-text">
         <span class="winner-label">${electionClosed ? '🏆 Election Winner' : '📊 Current Leader'}</span>
         <h2 class="winner-name">${winner.name}</h2>
         <p class="winner-desc">${winner.party} · <strong>${winner.voteCount} votes</strong> · ${pct}% of total</p>
       </div>`;
+    box.innerHTML = html;
+    if (announceContainer) {
+        announceContainer.innerHTML = `
+          <div class="glass-card text-center py-5 winner-announcement-card">
+            <div class="winner-badge-float">${electionClosed ? 'WINNER' : 'LEADING'}</div>
+            <div class="winner-icon winner-gold mx-auto mb-4 animate-bounce" style="font-size:4rem; width:100px; height:100px; display:flex; align-items:center; justify-content:center; border-radius:50%; background:linear-gradient(135deg, #FFD700 0%, #FFA500 100%); color:#fff; box-shadow:0 10px 30px rgba(255,215,0,0.4)">
+                <i class="fa-solid fa-crown"></i>
+            </div>
+            <span class="badge" style="background:rgba(16,185,129,0.1); color:var(--green); border-color:rgba(16,185,129,0.2)">
+                ${electionClosed ? 'Official Result' : 'Live Lead'}
+            </span>
+            <h1 class="winner-name-large mt-3" style="font-size:2.8rem; font-weight:800; color:var(--text-primary)">${winner.name}</h1>
+            <p class="winner-party-large" style="font-size:1.2rem; font-weight:600; color:var(--accent); margin-bottom:1.5rem">${winner.party}</p>
+            
+            <div class="winner-stats-grid" style="display:flex; justify-content:center; gap:3rem; margin:2rem 0">
+                <div class="winner-stat">
+                    <span class="stat-label" style="display:block; font-size:.85rem; color:var(--text-secondary)">Total Votes</span>
+                    <span class="stat-value" style="font-size:1.8rem; font-weight:800">${winner.voteCount}</span>
+                </div>
+                <div class="winner-stat">
+                    <span class="stat-label" style="display:block; font-size:.85rem; color:var(--text-secondary)">Vote Share</span>
+                    <span class="stat-value" style="font-size:1.8rem; font-weight:800">${pct}%</span>
+                </div>
+            </div>
+            
+            <p class="desc" style="max-width:500px; margin:0 auto 2rem">
+                ${electionClosed 
+                    ? `Congratulations to <strong>${winner.name}</strong> for winning the election. This result has been permanently verified on the blockchain.`
+                    : `<strong>${winner.name}</strong> is currently leading the election. These results are live and subject to change as more votes are cast.`
+                }
+            </p>
+            
+            <div style="display:flex; gap:1rem; justify-content:center">
+                <button class="btn btn-primary" onclick="switchTab('results')">View Detailed Analytics</button>
+                <button class="btn btn-outline" onclick="window.print()"><i class="fa-solid fa-print"></i> Print Report</button>
+            </div>
+          </div>`;
+    }
   }
 }
 
