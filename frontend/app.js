@@ -615,7 +615,15 @@ async function fetchCandidates() {
   try {
     const res  = await fetch(`${BACKEND_URL}/api/candidates`);
     const data = await res.json();
-    if (data.success && data.candidates.length) { renderCandidateCards(data.candidates); return; }
+    if (data.success && data.candidates.length) { 
+      // Map candidateId to id for frontend consistency
+      const mapped = data.candidates.map(c => ({
+        ...c,
+        id: c.candidateId || c.id
+      }));
+      renderCandidateCards(mapped); 
+      return; 
+    }
   } catch {}
   // 3. Simulation — load persisted vote counts before rendering
   loadVoteCounts();
@@ -820,7 +828,11 @@ async function fetchResults() {
       const res  = await fetch(`${BACKEND_URL}/api/results`);
       const data = await res.json();
       if (data.success) {
-        candidates  = data.candidates;
+        // Map candidateId to id for frontend consistency
+        candidates  = data.candidates.map(c => ({
+          ...c,
+          id: c.candidateId || c.id
+        }));
         totalVoters = data.votersCount;
       }
     } catch {}
