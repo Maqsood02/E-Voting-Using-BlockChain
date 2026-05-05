@@ -632,11 +632,7 @@ async function fetchCandidates() {
   try {
     const res  = await fetch(`${BACKEND_URL}/api/candidates`);
     const data = await res.json();
-    if (data.success) { 
-      if (data.candidates.length === 0) {
-        renderCandidateCards([]);
-        return;
-      }
+    if (data.success && data.candidates && data.candidates.length > 0) { 
       // Map candidateId to id for frontend consistency
       const mapped = data.candidates.map(c => ({
         ...c,
@@ -649,7 +645,7 @@ async function fetchCandidates() {
     console.warn("Backend candidates fetch failed, using simulation:", err);
   }
 
-  // 3. Simulation fallback
+  // 3. Simulation fallback (if backend is empty or unreachable)
   loadVoteCounts();
   renderCandidateCards(mockCandidates);
 }
