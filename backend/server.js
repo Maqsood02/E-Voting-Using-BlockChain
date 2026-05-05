@@ -279,6 +279,20 @@ app.get('/api/results', async (req, res) => {
 });
 
 /**
+ * @api {get} /api/user-status Get User Voting Status
+ */
+app.get('/api/user-status', async (req, res) => {
+  const { email } = req.query;
+  try {
+    const user = await User.findOne({ email });
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    res.json({ success: true, hasVoted: user.hasVoted, votedFor: user.votedFor });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to check status' });
+  }
+});
+
+/**
  * @api {post} /api/vote Cast Vote
  */
 app.post('/api/vote', async (req, res) => {
