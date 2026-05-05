@@ -301,6 +301,23 @@ app.post('/api/vote', async (req, res) => {
   }
 });
 
+/**
+ * @api {post} /api/reset-votes Reset All Election Data
+ */
+app.post('/api/reset-votes', async (req, res) => {
+  try {
+    // Reset all candidate vote counts to 0
+    await Candidate.updateMany({}, { voteCount: 0 });
+    
+    // Reset all users' voting status
+    await User.updateMany({}, { hasVoted: false, votedFor: null });
+
+    res.json({ success: true, message: 'All votes reset and users cleared.' });
+  } catch (error) {
+    res.status(500).json({ error: 'Reset failed' });
+  }
+});
+
 // Export the app for Vercel
 module.exports = app;
 
