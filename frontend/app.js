@@ -231,6 +231,7 @@ function startSession(session) {
   const initials = session.name.split(' ').map(w => w[0]).join('').toUpperCase().substring(0,2);
   document.getElementById('user-pill-avatar').innerText = initials;
   document.getElementById('user-pill-name').innerText   = session.name;
+  document.getElementById('user-pill').style.display     = 'flex';
 
   // Show/hide Admin nav link
   const adminLink = document.getElementById('nav-admin');
