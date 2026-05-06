@@ -91,6 +91,14 @@ const candidateSchema = new mongoose.Schema({
 
 const Candidate = mongoose.model('Candidate', candidateSchema);
 
+const settingSchema = new mongoose.Schema({
+  key: { type: String, required: true, unique: true },
+  value: { type: mongoose.Schema.Types.Mixed }
+}, { timestamps: true });
+
+const Setting = mongoose.model('Setting', settingSchema);
+
+
 app.use(cors());
 app.use(express.json());
 
@@ -349,6 +357,34 @@ app.post('/api/reset-votes', async (req, res) => {
     res.status(500).json({ error: 'Reset failed' });
   }
 });
+
+/**
+ * @api {get} /api/settings Get Global Settings
+ */
+app.get('/api/settings', async (req, res) => {
+  try {
+    const settings = await Setting.find();
+    const settingsMap = {};
+    settings.forEach(s => { settingsMap[s.key] = s.value; });
+    res.json({ success: true, settings: settingsMap });
+  } catch (error) {
+    res.status(500).json({ success: false, error: 'Failed to fetch settings' });
+  }
+});
+
+/**
+ * @api {post} /api/settings Update Global Settings
+ */
+app.post('/api/settings', async (req, res) => {
+  const { key, value } = req.body;
+  try {
+    await Setting.findOneAndUpdate({ key }, { value }, { upsert: true });
+    res.json({ success: true, message: 'Setting updated' });
+  } catch (error) {
+    res.status(500).json({ success: false, error: 'Failed to update setting' });
+  }
+});
+
 
 // Export the app for Vercel
 module.exports = app;
