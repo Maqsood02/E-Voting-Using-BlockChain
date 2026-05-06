@@ -260,6 +260,7 @@ async function startSession(session) {
   }
 
   // Auto-connect wallet
+  await syncGlobalSettings();
   autoConnectWallet();
 
   console.log(`✅ Session started: ${session.name} (${session.role})`);
@@ -445,7 +446,7 @@ async function switchTab(tabId) {
 
   if (tabId === 'results' || tabId === 'winner') await fetchResults();
   if (tabId === 'vote')    { await fetchCandidates(); await checkVoterStatus(); }
-  if (tabId === 'admin')   { renderUsersTable(); renderAdminCandidates(); }
+  if (tabId === 'admin')   { await syncGlobalSettings(); renderUsersTable(); renderAdminCandidates(); }
 
   // Auto-close mobile menu if open
   document.body.classList.remove('mobile-nav-active');
@@ -509,6 +510,17 @@ async function connectWallet() {
     fetchCandidates();
     showToast('🔗 Simulation wallet connected: ' + short, 'info');
   }
+
+  // Sync with backend if admin
+  if (currentSession?.role === 'admin' && currentAccount) {
+    try {
+      await fetch(`${BACKEND_URL}/api/settings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key: 'adminWalletAddress', value: currentAccount })
+      });
+    } catch (e) { console.warn('Failed to sync wallet to backend'); }
+  }
 }
 
 /** Silent auto-connect — uses already-authorised accounts (no MetaMask popup) */
@@ -530,7 +542,7 @@ async function autoConnectWallet() {
 }
 
 /** Disconnect wallet (admin can turn off) */
-function disconnectWallet() {
+async function disconnectWallet() {
   currentAccount = null;
   signer   = null;
   provider = null;
@@ -538,6 +550,36 @@ function disconnectWallet() {
   checkVoterStatus();
   fetchCandidates();
   showToast('🔌 Wallet disconnected.', 'info');
+
+  // Clear backend setting if admin
+  if (currentSession?.role === 'admin') {
+    try {
+      await fetch(`${BACKEND_URL}/api/settings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key: 'adminWalletAddress', value: null })
+      });
+    } catch (e) { console.warn('Failed to clear wallet on backend'); }
+  }
+}
+
+/** Sync global settings from backend */
+async function syncGlobalSettings() {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/settings`);
+    const data = await res.json();
+    if (data.success && data.settings) {
+      const globalAddress = data.settings.adminWalletAddress;
+      if (globalAddress && !currentAccount) {
+        currentAccount = globalAddress;
+        const short = `${currentAccount.slice(0,6)}...${currentAccount.slice(-4)}`;
+        updatePanelWallet(short, true);
+        checkVoterStatus();
+        fetchCandidates();
+        console.log('🔄 Synced wallet from backend:', globalAddress);
+      }
+    }
+  } catch (e) { console.warn('Settings sync failed'); }
 }
 
 /** Update the wallet status display inside the Election Control panel */
