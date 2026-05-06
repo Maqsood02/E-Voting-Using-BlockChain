@@ -639,7 +639,8 @@ async function checkVoterStatus() {
   if (banner) banner.style.display = 'none';
 
   title.innerText = "✅ Wallet Connected — Ready to Vote";
-  desc.innerText  = `Address: ${currentAccount}. Cast your vote below — each wallet can vote only once.`;
+  const shortAddr = currentAccount.length > 15 ? `${currentAccount.substring(0, 10)}...${currentAccount.substring(currentAccount.length - 8)}` : currentAccount;
+  desc.innerText  = `Address: ${shortAddr}. Cast your vote below — each wallet can vote only once.`;
   if (btn) btn.style.display = "none";
 }
 
