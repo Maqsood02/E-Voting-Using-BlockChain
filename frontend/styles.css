@@ -1084,13 +1084,54 @@ body {
 
 @media (max-width: 768px) {
   .developer-card {
-    grid-template-columns: 1fr;
-    gap: 2rem;
-    padding: 2rem !important;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1.5rem;
+    padding: 2.5rem 1.5rem !important;
+    text-align: center;
   }
   
-  .dev-name { font-size: 2.2rem; }
-  .developer-visual { max-width: 300px; margin: 0 auto; }
+  .developer-details {
+    display: contents;
+  }
+  
+  .dev-tag {
+    order: -1;
+    margin-bottom: 0.5rem;
+  }
+  
+  .developer-visual {
+    order: 0;
+    max-width: 300px;
+    margin: 0 auto;
+    width: 100%;
+  }
+  
+  .dev-name { 
+    order: 1;
+    font-size: 2.2rem; 
+    margin-top: 0.5rem;
+  }
+
+  .dev-usn {
+    order: 2;
+    justify-content: center;
+  }
+
+  .dev-bio {
+    order: 3;
+  }
+
+  .dev-socials {
+    order: 4;
+    justify-content: center;
+  }
+
+  .developer-details .btn {
+    order: 5;
+    width: 100%;
+  }
 }
 
 /* ── Team Section ── */
