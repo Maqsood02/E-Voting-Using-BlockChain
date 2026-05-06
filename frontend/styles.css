@@ -671,7 +671,7 @@ body {
 }
 .status-icon { font-size:2rem; color:var(--accent); }
 .status-text h4 { font-size:1.1rem; margin-bottom:.2rem; color:var(--text-primary); }
-.status-text p  { color:var(--text-secondary); font-size:.87rem; }
+.status-text p  { color:var(--text-secondary); font-size:.87rem; overflow-wrap: break-word; word-break: break-word; }
 .status-action  { margin-left:auto; }
 
 /* ── Contract Bar ────────────────────────────────────────────── */
